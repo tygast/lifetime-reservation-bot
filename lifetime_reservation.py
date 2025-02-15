@@ -268,11 +268,10 @@ class LifetimeReservationBot:
 
 def main():
     bot = LifetimeReservationBot()
-    
-    end_time = datetime.datetime.strptime(bot.END_TIME, '%I:%M %p')
-    tomorrow = datetime.datetime.now().date() + datetime.timedelta(days=1)
 
     if bot.RUN_ON_SCHEDULE:
+        end_time = datetime.datetime.strptime(bot.END_TIME, '%I:%M %p')
+        tomorrow = datetime.datetime.now().date() + datetime.timedelta(days=1)
         scheduled_time = (datetime.datetime.combine(tomorrow, end_time.time()) + 
                           datetime.timedelta(hours=1)).strftime("%H:%M")
         print(f"🕒 Scheduling script to run daily at {scheduled_time}")
