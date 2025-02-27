@@ -9,15 +9,6 @@ jobs:
   run-bot:
     runs-on: ubuntu-latest
 
-    env:
-      HEADLESS: "true"
-      RUN_ON_SCHEDULE: "false"
-      TARGET_CLASS: "Yoga"
-      TARGET_INSTRUCTOR: "John Doe"
-      TARGET_DATE: "2024-03-01"
-      START_TIME: "10:00"
-      END_TIME: "11:00"
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
