@@ -11,7 +11,7 @@ jobs:
 
     env:
       HEADLESS: "true"
-      RUN_ON_SCHEDULE: "true"
+      RUN_ON_SCHEDULE: "false"
       TARGET_CLASS: "Yoga"
       TARGET_INSTRUCTOR: "John Doe"
       TARGET_DATE: "2024-03-01"
