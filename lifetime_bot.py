@@ -2,7 +2,6 @@ import os
 import time
 import re
 import datetime
-import schedule
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -174,10 +173,13 @@ class LifetimeReservationBot:
             
             # Complete reservation
             if self._complete_reservation():
-                self.send_email(
-                    "Lifetime Bot - Success",
-                    f"Your class on {target_date} was successfully reserved."
-                )
+                # Only send success email if it wasn't already reserved
+                # (already reserved email is handled in _click_reserve_button)
+                if not hasattr(self, 'already_reserved'):
+                    self.send_email(
+                        "Lifetime Bot - Success",
+                        f"Your class on {target_date} was successfully reserved."
+                    )
             else:
                 raise Exception("Reservation process failed")
                 
@@ -193,8 +195,9 @@ class LifetimeReservationBot:
     def _complete_reservation(self):
         """Complete the reservation process after finding the class"""
         try:
-            # Click reserve button
-            self._click_reserve_button()
+            # Click reserve button - if returns False, class was already reserved
+            if not self._click_reserve_button():
+                return True  # Return True because this is a success case
             
             # Handle waiver if needed
             if "pickleball" in self.TARGET_CLASS.lower():
@@ -209,7 +212,7 @@ class LifetimeReservationBot:
             return False
 
     def _click_reserve_button(self):
-        """Click the reserve or waitlist button"""
+        """Click the reserve or waitlist button, or handle if already reserved"""
         wait = WebDriverWait(self.driver, 15)
         time.sleep(3)
         
@@ -219,14 +222,23 @@ class LifetimeReservationBot:
         ) or self.driver.find_elements(
             By.XPATH,
             "//button[contains(text(), 'Reserve')] | "
-            "//button[contains(text(), 'Add to Waitlist')]"
+            "//button[contains(text(), 'Add to Waitlist')] | "
+            "//button[contains(text(), 'Cancel')]"
         )
         
         if not buttons:
-            raise Exception("No reserve/waitlist button found")
+            raise Exception("No reserve/waitlist/cancel button found")
             
         for button in buttons:
-            if "Reserve" in button.text or "Add to Waitlist" in button.text:
+            if "Cancel" in button.text:
+                print("✅ Class is already reserved!")
+                self.already_reserved = True  # Set flag for already reserved
+                self.send_email(
+                    "Lifetime Bot - Already Reserved",
+                    f"The class was already reserved. No action needed."
+                )
+                return False
+            elif "Reserve" in button.text or "Add to Waitlist" in button.text:
                 self.driver.execute_script("arguments[0].scrollIntoView();", button)
                 time.sleep(1)
                 self.driver.execute_script("arguments[0].click();", button)
@@ -268,20 +280,7 @@ class LifetimeReservationBot:
 
 def main():
     bot = LifetimeReservationBot()
-
-    if bot.RUN_ON_SCHEDULE:
-        end_time = datetime.datetime.strptime(bot.END_TIME, '%I:%M %p')
-        tomorrow = datetime.datetime.now().date() + datetime.timedelta(days=1)
-        scheduled_time = (datetime.datetime.combine(tomorrow, end_time.time()) + 
-                          datetime.timedelta(hours=1)).strftime("%H:%M")
-        print(f"🕒 Scheduling script to run daily at {scheduled_time}")
-        schedule.every().day.at(scheduled_time).do(bot.reserve_class)
-        
-        while True:
-            schedule.run_pending()
-            time.sleep(60)
-    else:
-        bot.reserve_class()
+    bot.reserve_class()
 
 if __name__ == "__main__":
     main()
