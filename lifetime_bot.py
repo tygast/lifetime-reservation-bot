@@ -259,15 +259,16 @@ class LifetimeReservationBot:
             By.XPATH,
             "//button[contains(text(), 'Reserve')] | "
             "//button[contains(text(), 'Add to Waitlist')] | "
-            "//button[contains(text(), 'Cancel')]"
+            "//button[contains(text(), 'Cancel')] | "
+            "//button[contains(text(), 'Leave Waitlist')]"
         )
         
         if not buttons:
             raise Exception("No reserve/waitlist/cancel button found")
             
         for button in buttons:
-            if "Cancel" in button.text:
-                print("✅ Class is already reserved!")
+            if "Cancel" in button.text or "Leave Waitlist" in button.text:
+                print("✅ Class is already reserved or on waitlist!")
                 self.already_reserved = True  # Set flag for already reserved
                 class_details = (
                     f"Class: {self.TARGET_CLASS}\n"
@@ -277,7 +278,7 @@ class LifetimeReservationBot:
                 )
                 self.send_email(
                     "Lifetime Bot - Already Reserved",
-                    f"The class was already reserved. No action needed.\n\n{class_details}"
+                    f"The class was already reserved or waitlisted. No action needed.\n\n{class_details}"
                 )
                 return False
             elif "Reserve" in button.text or "Add to Waitlist" in button.text:
