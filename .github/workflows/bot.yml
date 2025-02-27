@@ -9,15 +9,6 @@ jobs:
   run-bot:
     runs-on: ubuntu-latest
 
-    env:
-      HEADLESS: "true"
-      RUN_ON_SCHEDULE: "true"
-      TARGET_CLASS: "Yoga"
-      TARGET_INSTRUCTOR: "John Doe"
-      TARGET_DATE: "2024-03-01"
-      START_TIME: "10:00"
-      END_TIME: "11:00"
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
@@ -41,13 +32,13 @@ jobs:
           echo "SMTP_PORT=\"${{ secrets.SMTP_PORT }}\"" >> .env
           echo "LIFETIME_USERNAME=${{ secrets.LIFETIME_USERNAME }}" >> .env
           echo "LIFETIME_PASSWORD=${{ secrets.LIFETIME_PASSWORD }}" >> .env
-          echo "HEADLESS=${{ env.HEADLESS }}" >> .env
-          echo "RUN_ON_SCHEDULE=${{ env.RUN_ON_SCHEDULE }}" >> .env
-          echo "TARGET_CLASS=${{ env.TARGET_CLASS }}" >> .env
-          echo "TARGET_INSTRUCTOR=${{ env.TARGET_INSTRUCTOR }}" >> .env
-          echo "TARGET_DATE=${{ env.TARGET_DATE }}" >> .env
-          echo "START_TIME=${{ env.START_TIME }}" >> .env
-          echo "END_TIME=${{ env.END_TIME }}" >> .env
+          echo "HEADLESS=${{ vars.HEADLESS }}" >> .env
+          echo "RUN_ON_SCHEDULE=${{ vars.RUN_ON_SCHEDULE }}" >> .env
+          echo "TARGET_CLASS=${{ vars.TARGET_CLASS }}" >> .env
+          echo "TARGET_INSTRUCTOR=${{ vars.TARGET_INSTRUCTOR }}" >> .env
+          echo "TARGET_DATE=${{ vars.TARGET_DATE }}" >> .env
+          echo "START_TIME=${{ vars.START_TIME }}" >> .env
+          echo "END_TIME=${{ vars.END_TIME }}" >> .env
 
       - name: Run Lifetime Bot
         run: python lifetime_bot.py
@@ -59,10 +50,10 @@ jobs:
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           LIFETIME_USERNAME: ${{ secrets.LIFETIME_USERNAME }}
           LIFETIME_PASSWORD: ${{ secrets.LIFETIME_PASSWORD }}
-          HEADLESS: ${{ env.HEADLESS }}
-          RUN_ON_SCHEDULE: ${{ env.RUN_ON_SCHEDULE }}
-          TARGET_CLASS: ${{ env.TARGET_CLASS }}
-          TARGET_INSTRUCTOR: ${{ env.TARGET_INSTRUCTOR }}
-          TARGET_DATE: ${{ env.TARGET_DATE }}
-          START_TIME: ${{ env.START_TIME }}
-          END_TIME: ${{ env.END_TIME }}
+          HEADLESS: ${{ vars.HEADLESS }}
+          RUN_ON_SCHEDULE: ${{ vars.RUN_ON_SCHEDULE }}
+          TARGET_CLASS: ${{ vars.TARGET_CLASS }}
+          TARGET_INSTRUCTOR: ${{ vars.TARGET_INSTRUCTOR }}
+          TARGET_DATE: ${{ vars.TARGET_DATE }}
+          START_TIME: ${{ vars.START_TIME }}
+          END_TIME: ${{ vars.END_TIME }}

@@ -157,6 +157,14 @@ class LifetimeReservationBot:
         try:
             target_date = self.get_target_date()
             
+            # Create email details string
+            class_details = (
+                f"Class: {self.TARGET_CLASS}\n"
+                f"Instructor: {self.TARGET_INSTRUCTOR}\n"
+                f"Date: {target_date}\n"
+                f"Time: {self.START_TIME} - {self.END_TIME}"
+            )
+            
             # Login and navigate
             self.login()
             if not self.navigate_to_schedule(target_date):
@@ -174,11 +182,10 @@ class LifetimeReservationBot:
             # Complete reservation
             if self._complete_reservation():
                 # Only send success email if it wasn't already reserved
-                # (already reserved email is handled in _click_reserve_button)
                 if not hasattr(self, 'already_reserved'):
                     self.send_email(
                         "Lifetime Bot - Success",
-                        f"Your class on {target_date} was successfully reserved."
+                        f"Your class was successfully reserved!\n\n{class_details}"
                     )
             else:
                 raise Exception("Reservation process failed")
@@ -187,7 +194,7 @@ class LifetimeReservationBot:
             print(f"❌ Reservation failed: {e}")
             self.send_email(
                 "Lifetime Bot - Failure",
-                f"Failed to reserve class on {target_date}: {str(e)}"
+                f"Failed to reserve class:\n\n{class_details}\n\nError: {str(e)}"
             )
         finally:
             self.driver.quit()
@@ -233,9 +240,15 @@ class LifetimeReservationBot:
             if "Cancel" in button.text:
                 print("✅ Class is already reserved!")
                 self.already_reserved = True  # Set flag for already reserved
+                class_details = (
+                    f"Class: {self.TARGET_CLASS}\n"
+                    f"Instructor: {self.TARGET_INSTRUCTOR}\n"
+                    f"Date: {self.get_target_date()}\n"
+                    f"Time: {self.START_TIME} - {self.END_TIME}"
+                )
                 self.send_email(
                     "Lifetime Bot - Already Reserved",
-                    f"The class was already reserved. No action needed."
+                    f"The class was already reserved. No action needed.\n\n{class_details}"
                 )
                 return False
             elif "Reserve" in button.text or "Add to Waitlist" in button.text:
