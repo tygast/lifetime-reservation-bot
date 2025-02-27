@@ -23,9 +23,6 @@ jobs:
           pip install -r requirements.txt
           pip install selenium webdriver-manager
 
-      - name: Debug Environment Variables
-        run: env | grep TARGET_
-
       - name: Create .env File
         run: |
           echo "EMAIL_SENDER=${{ secrets.EMAIL_SENDER }}" >> .env
