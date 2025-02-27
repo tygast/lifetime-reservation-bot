@@ -1,86 +1,88 @@
-# Lifetime Class Reservation Bot
+# Lifetime Fitness Class Reservation Bot
+
+A Python-based automation bot that reserves classes at Lifetime Fitness, running on GitHub Actions.
 
 ## Overview
-This bot automates the reservation of fitness classes at Lifetime Fitness using Selenium. It logs into the Lifetime website, navigates to the class schedule, finds the desired class based on time and instructor, and completes the reservation process.
+This bot automatically reserves classes at Lifetime Fitness by:
+- Logging in to your Lifetime account
+- Navigating to the class schedule
+- Finding and reserving your specified class
+- Sending email confirmations of success/failure
+- Running on a schedule via GitHub Actions
 
-## Features
-- Logs into Lifetime Fitness using credentials from a `.env` file.
-- Searches for a specified class by name, time, and instructor.
-- Clicks the "Reserve" or "Add to Waitlist" button.
-- Selects the waiver agreement (if required) and clicks "Finish" to confirm the reservation.
-- Runs on a schedule if `RUN_ON_SCHEDULE=true`.
-- Sends an email notification upon success or failure of the reservation.
+## Setup
 
-## Requirements
-- Python 3.x
-- Google Chrome
-- ChromeDriver
+### 1. Fork this Repository
 
-## Installation
-1. Clone this repository:
-   ```bash
-   git clone https://github.com/your-repo/lifetime-bot.git
-   cd lifetime-bot
-   ```
+### 2. Configure GitHub Secrets
+Add the following secrets to your repository (Settings → Secrets and variables → Actions):
 
-2. Create a virtual environment (optional but recommended):
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows use `venv\Scripts\activate`
-   ```
+```ini
+# Lifetime Credentials
+LIFETIME_USERNAME=your_lifetime_email
+LIFETIME_PASSWORD=your_lifetime_password
 
+# Class Details
+TARGET_CLASS=Pickleball
+TARGET_INSTRUCTOR=Instructor Name
+TARGET_DATE=YYYY-MM-DD
+START_TIME=8:30 PM
+END_TIME=10:00 PM
+
+# Email Configuration
+EMAIL_SENDER=your_email@gmail.com
+EMAIL_PASSWORD=your_app_specific_password
+EMAIL_RECEIVER=your_email@gmail.com
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+
+# Bot Configuration
+HEADLESS=true
+RUN_ON_SCHEDULE=true
+```
+
+### 3. Email Setup
+1. Use a Gmail account
+2. Enable 2-Step Verification in your Google Account
+3. Generate an App Password:
+   - Go to Google Account Settings → Security
+   - Under "2-Step Verification", scroll to "App passwords"
+   - Generate a new app password
+   - Use this password for EMAIL_PASSWORD in GitHub Secrets
+
+## Scheduling
+The bot runs automatically via GitHub Actions:
+- Schedule: 10:00 UTC Sunday through Thursday (`0 10 * * 0-4`)
+- Can also be triggered manually through GitHub Actions interface
+
+## Local Development
+
+### Requirements
+- Python 3.9+
+- Chrome browser
+- Required packages: `selenium`, `python-dotenv`, `webdriver-manager`
+
+### Local Setup
+1. Clone the repository
+2. Create a `.env` file with the same variables as GitHub Secrets
 3. Install dependencies:
    ```bash
    pip install -r requirements.txt
    ```
-
-4. Create a `.env` file in the project root and add the following variables:
-   ```ini
-   LIFETIME_USERNAME=your_username
-   LIFETIME_PASSWORD=your_password
-   CLASS_SCHEDULE=Pickleball Open Play: All Levels
-   START_TIME=8:30 PM
-   END_TIME=10:00 PM
-   TARGET_DATE=YYYY-MM-DD
-   TARGET_INSTRUCTOR=Ashlyn M.
-   RUN_ON_SCHEDULE=true  # Set to false if you don't want scheduled execution
-   EMAIL_SENDER=your_email@example.com
-   EMAIL_RECEIVER=your_email@example.com
-   EMAIL_PASSWORD=your_email_password
+4. Run locally:
+   ```bash
+   python lifetime_bot.py
    ```
-
-## Usage
-To run the bot manually:
-```bash
-python lifetime_reservation.py
-```
-
-### Running in Headless Mode
-To run the script in headless mode (no browser window):
-1. Open `lifetime_reservation.py`
-2. Locate the `options` configuration for `webdriver.ChromeOptions()`
-3. Add the following line:
-   ```python
-   options.add_argument("--headless")
-   ```
-4. Save and run the script.
-
-### Scheduled Execution
-If `RUN_ON_SCHEDULE=true`, the bot will:
-- Run **only on Sunday through Thursday**.
-- Look for a class **8 days from the current date**.
-- Run exactly **1 hour after the `END_TIME`**.
-
-### Email Notifications
-The bot sends an email upon success or failure of a class reservation.
 
 ## Troubleshooting
-- If the bot fails to find a class, check `schedule_page.html` for debugging.
-- If elements are not clickable, ensure the webpage has fully loaded.
-- If running in headless mode, try without `--headless` to see any UI-related issues.
+- Check GitHub Actions logs for execution details
+- Email notifications will be sent for both successful and failed reservations
+- For local testing, set `HEADLESS=false` to watch the automation in action
 
-## Contributing
-Feel free to submit issues or pull requests to improve this bot.
+## Security Note
+- Never commit your `.env` file
+- Always use GitHub Secrets for sensitive information
+- Regularly rotate your email app password
 
 ## License
-This project is licensed under the MIT License.
+MIT License
