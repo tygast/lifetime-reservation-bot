@@ -39,6 +39,8 @@ jobs:
           echo "TARGET_DATE=${{ vars.TARGET_DATE }}" >> .env
           echo "START_TIME=${{ vars.START_TIME }}" >> .env
           echo "END_TIME=${{ vars.END_TIME }}" >> .env
+          echo "LIFETIME_CLUB_NAME=${{ vars.LIFETIME_CLUB_NAME }}" >> .env
+          echo "LIFETIME_CLUB_STATE=${{ vars.LIFETIME_CLUB_STATE }}" >> .env
 
       - name: Run Lifetime Bot
         run: python lifetime_bot.py
@@ -57,3 +59,5 @@ jobs:
           TARGET_DATE: ${{ vars.TARGET_DATE }}
           START_TIME: ${{ vars.START_TIME }}
           END_TIME: ${{ vars.END_TIME }}
+          LIFETIME_CLUB_NAME: ${{ vars.LIFETIME_CLUB_NAME }}
+          LIFETIME_CLUB_STATE: ${{ vars.LIFETIME_CLUB_STATE }}
