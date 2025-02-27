@@ -2,12 +2,21 @@ name: Lifetime Bot Automation
 
 on:
   schedule:
-    - cron: '0 10 * * 0-4'  # Runs at 10:00 on every day-of-week from Sunday through Thursday
+    - cron: '0 10 * * 0-4'  # Runs at 10:00 AM from Sunday to Thursday
   workflow_dispatch:  # Allows manual trigger
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+
+    env:
+      HEADLESS: "true"
+      RUN_ON_SCHEDULE: "true"
+      TARGET_CLASS: "Yoga"
+      TARGET_INSTRUCTOR: "John Doe"
+      TARGET_DATE: "2024-03-01"
+      START_TIME: "10:00"
+      END_TIME: "11:00"
 
     steps:
       - name: Checkout Repository
@@ -23,28 +32,26 @@ jobs:
           pip install -r requirements.txt
           pip install selenium webdriver-manager
 
-      - name: Create .env File  # Create .env dynamically
+      - name: Create .env File
         run: |
-          echo "HEADLESS=${{ secrets.HEADLESS }}" >> .env
-          echo "RUN_ON_SCHEDULE=${{ secrets.RUN_ON_SCHEDULE }}" >> .env
           echo "EMAIL_SENDER=${{ secrets.EMAIL_SENDER }}" >> .env
           echo "EMAIL_PASSWORD=${{ secrets.EMAIL_PASSWORD }}" >> .env
           echo "EMAIL_RECEIVER=${{ secrets.EMAIL_RECEIVER }}" >> .env
           echo "SMTP_SERVER=${{ secrets.SMTP_SERVER }}" >> .env
-          echo "SMTP_PORT=${{ secrets.SMTP_PORT }}" >> .env
+          echo "SMTP_PORT=\"${{ secrets.SMTP_PORT }}\"" >> .env
           echo "LIFETIME_USERNAME=${{ secrets.LIFETIME_USERNAME }}" >> .env
           echo "LIFETIME_PASSWORD=${{ secrets.LIFETIME_PASSWORD }}" >> .env
-          echo "TARGET_CLASS=${{ secrets.TARGET_CLASS }}" >> .env
-          echo "TARGET_INSTRUCTOR=${{ secrets.TARGET_INSTRUCTOR }}" >> .env
-          echo "TARGET_DATE=${{ secrets.TARGET_DATE }}" >> .env
-          echo "START_TIME=${{ secrets.START_TIME }}" >> .env
-          echo "END_TIME=${{ secrets.END_TIME }}" >> .env
+          echo "HEADLESS=${{ env.HEADLESS }}" >> .env
+          echo "RUN_ON_SCHEDULE=${{ env.RUN_ON_SCHEDULE }}" >> .env
+          echo "TARGET_CLASS=${{ env.TARGET_CLASS }}" >> .env
+          echo "TARGET_INSTRUCTOR=${{ env.TARGET_INSTRUCTOR }}" >> .env
+          echo "TARGET_DATE=${{ env.TARGET_DATE }}" >> .env
+          echo "START_TIME=${{ env.START_TIME }}" >> .env
+          echo "END_TIME=${{ env.END_TIME }}" >> .env
 
       - name: Run Lifetime Bot
         run: python lifetime_bot.py
         env:
-          HEADLESS: ${{ secrets.HEADLESS }}
-          RUN_ON_SCHEDULE: ${{ secrets.RUN_ON_SCHEDULE }}
           EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
           EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
@@ -52,8 +59,10 @@ jobs:
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           LIFETIME_USERNAME: ${{ secrets.LIFETIME_USERNAME }}
           LIFETIME_PASSWORD: ${{ secrets.LIFETIME_PASSWORD }}
-          TARGET_CLASS: ${{ secrets.TARGET_CLASS }}
-          TARGET_INSTRUCTOR: ${{ secrets.TARGET_INSTRUCTOR }}
-          TARGET_DATE: ${{ secrets.TARGET_DATE }}
-          START_TIME: ${{ secrets.START_TIME }}
-          END_TIME: ${{ secrets.END_TIME }}
+          HEADLESS: ${{ env.HEADLESS }}
+          RUN_ON_SCHEDULE: ${{ env.RUN_ON_SCHEDULE }}
+          TARGET_CLASS: ${{ env.TARGET_CLASS }}
+          TARGET_INSTRUCTOR: ${{ env.TARGET_INSTRUCTOR }}
+          TARGET_DATE: ${{ env.TARGET_DATE }}
+          START_TIME: ${{ env.START_TIME }}
+          END_TIME: ${{ env.END_TIME }}
