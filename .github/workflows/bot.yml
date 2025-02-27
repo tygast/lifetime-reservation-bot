@@ -9,15 +9,6 @@ jobs:
   run-bot:
     runs-on: ubuntu-latest
 
-    env:
-      HEADLESS: "true"
-      RUN_ON_SCHEDULE: "false"
-      TARGET_CLASS: "Pickleball"
-      TARGET_INSTRUCTOR: "John Doe"
-      TARGET_DATE: "2024-03-01"
-      START_TIME: "9:00 PM"
-      END_TIME: "10:00 PM"
-      
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
@@ -32,6 +23,9 @@ jobs:
           pip install -r requirements.txt
           pip install selenium webdriver-manager
 
+      - name: Debug Environment Variables
+        run: env | grep TARGET_
+
       - name: Create .env File
         run: |
           echo "EMAIL_SENDER=${{ secrets.EMAIL_SENDER }}" >> .env
@@ -41,16 +35,28 @@ jobs:
           echo "SMTP_PORT=\"${{ secrets.SMTP_PORT }}\"" >> .env
           echo "LIFETIME_USERNAME=${{ secrets.LIFETIME_USERNAME }}" >> .env
           echo "LIFETIME_PASSWORD=${{ secrets.LIFETIME_PASSWORD }}" >> .env
-          echo "HEADLESS=${{ env.HEADLESS }}" >> .env
-          echo "RUN_ON_SCHEDULE=${{ env.RUN_ON_SCHEDULE }}" >> .env
-          echo "TARGET_CLASS=${{ env.TARGET_CLASS }}" >> .env
-          echo "TARGET_INSTRUCTOR=${{ env.TARGET_INSTRUCTOR }}" >> .env
-          echo "TARGET_DATE=${{ env.TARGET_DATE }}" >> .env
-          echo "START_TIME=${{ env.START_TIME }}" >> .env
-          echo "END_TIME=${{ env.END_TIME }}" >> .env
-
-      - name: Debug Environment Variables
-        run: env | grep TARGET_
+          echo "HEADLESS=${{ vars.HEADLESS }}" >> .env
+          echo "RUN_ON_SCHEDULE=${{ vars.RUN_ON_SCHEDULE }}" >> .env
+          echo "TARGET_CLASS=${{ vars.TARGET_CLASS }}" >> .env
+          echo "TARGET_INSTRUCTOR=${{ vars.TARGET_INSTRUCTOR }}" >> .env
+          echo "TARGET_DATE=${{ vars.TARGET_DATE }}" >> .env
+          echo "START_TIME=${{ vars.START_TIME }}" >> .env
+          echo "END_TIME=${{ vars.END_TIME }}" >> .env
 
       - name: Run Lifetime Bot
         run: python lifetime_bot.py
+        env:
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          LIFETIME_USERNAME: ${{ secrets.LIFETIME_USERNAME }}
+          LIFETIME_PASSWORD: ${{ secrets.LIFETIME_PASSWORD }}
+          HEADLESS: ${{ vars.HEADLESS }}
+          RUN_ON_SCHEDULE: ${{ vars.RUN_ON_SCHEDULE }}
+          TARGET_CLASS: ${{ vars.TARGET_CLASS }}
+          TARGET_INSTRUCTOR: ${{ vars.TARGET_INSTRUCTOR }}
+          TARGET_DATE: ${{ vars.TARGET_DATE }}
+          START_TIME: ${{ vars.START_TIME }}
+          END_TIME: ${{ vars.END_TIME }}
