@@ -21,13 +21,15 @@ Add the following secrets to your repository (Settings → Secrets and variables
 # Lifetime Credentials
 LIFETIME_USERNAME=your_lifetime_email
 LIFETIME_PASSWORD=your_lifetime_password
+LIFETIME_CLUB_NAME=your_club_name
+LIFETIME_CLUB_STATE=your_club_state
 
 # Class Details
-TARGET_CLASS=Pickleball
-TARGET_INSTRUCTOR=Instructor Name
+TARGET_CLASS=your_class_name
+TARGET_INSTRUCTOR=your_instructor_name
 TARGET_DATE=YYYY-MM-DD
-START_TIME=8:30 PM
-END_TIME=10:00 PM
+START_TIME=your_start_time
+END_TIME=your_end_time
 
 # Email Configuration
 EMAIL_SENDER=your_email@gmail.com

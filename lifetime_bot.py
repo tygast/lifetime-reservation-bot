@@ -32,6 +32,10 @@ class LifetimeReservationBot:
         self.TARGET_DATE = os.getenv("TARGET_DATE")
         self.START_TIME = os.getenv("START_TIME")
         self.END_TIME = os.getenv("END_TIME", "10:00 AM")
+        self.LIFETIME_CLUB_NAME = os.getenv("LIFETIME_CLUB_NAME")
+        self.LIFETIME_CLUB_STATE = os.getenv("LIFETIME_CLUB_STATE")
+        if not self.LIFETIME_CLUB_NAME or not self.LIFETIME_CLUB_STATE:
+            raise ValueError("LIFETIME_CLUB_NAME and LIFETIME_CLUB_STATE environment variables are required")
         
     def setup_email_config(self):
         """Initialize email configuration"""
@@ -96,12 +100,37 @@ class LifetimeReservationBot:
         time.sleep(3)
         print("✅ Logged in successfully.")
 
+    def _format_club_url_segment(self, club_name):
+        """Convert club name to URL-friendly format"""
+        # Remove 'Life Time' or variations from the name
+        name = club_name.replace('Life Time', '').replace('LifeTime', '').strip()
+        name = name.strip(' -')  # Remove leading/trailing dashes and spaces
+        
+        # Replace spaces and special characters
+        name = name.replace(' at ', '-').replace(' - ', '-')
+        
+        # Convert to lowercase and replace spaces with hyphens
+        name = name.lower().replace(' ', '-')
+        
+        # Remove any special characters except hyphens
+        name = ''.join(c for c in name if c.isalnum() or c == '-')
+        
+        return name
+
     def navigate_to_schedule(self, target_date):
         """Navigate to the class schedule page"""
+        club_name = self.LIFETIME_CLUB_NAME
+        club_state = self.LIFETIME_CLUB_STATE.lower()
+        if not club_name or not club_state:
+            raise Exception("LIFETIME_CLUB_NAME and LIFETIME_CLUB_STATE environment variables are not set")
+        
+        url_segment = self._format_club_url_segment(club_name)
+        url_param = club_name.replace(' ', '+')
+        
         schedule_url = (
-            f"https://my.lifetime.life/clubs/tx/san-antonio-281/classes.html?"
+            f"https://my.lifetime.life/clubs/{club_state}/{url_segment}/classes.html?"
             f"teamMemberView=true&selectedDate={target_date}&mode=day&"
-            f"location=San+Antonio+281"
+            f"location={url_param}"
         )
         self.driver.get(schedule_url)
         print(f"🔄 Navigated to schedules page for {target_date}.")
