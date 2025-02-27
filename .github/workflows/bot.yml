@@ -9,6 +9,15 @@ jobs:
   run-bot:
     runs-on: ubuntu-latest
 
+    env:
+      HEADLESS: "true"
+      RUN_ON_SCHEDULE: "false"
+      TARGET_CLASS: "Pickleball"
+      TARGET_INSTRUCTOR: "John Doe"
+      TARGET_DATE: "2024-03-01"
+      START_TIME: "9:00 PM"
+      END_TIME: "10:00 PM"
+      
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
@@ -42,18 +51,3 @@ jobs:
 
       - name: Run Lifetime Bot
         run: python lifetime_bot.py
-        env:
-          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
-          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
-          EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
-          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          LIFETIME_USERNAME: ${{ secrets.LIFETIME_USERNAME }}
-          LIFETIME_PASSWORD: ${{ secrets.LIFETIME_PASSWORD }}
-          HEADLESS: ${{ env.HEADLESS }}
-          RUN_ON_SCHEDULE: ${{ env.RUN_ON_SCHEDULE }}
-          TARGET_CLASS: ${{ env.TARGET_CLASS }}
-          TARGET_INSTRUCTOR: ${{ env.TARGET_INSTRUCTOR }}
-          TARGET_DATE: ${{ env.TARGET_DATE }}
-          START_TIME: ${{ env.START_TIME }}
-          END_TIME: ${{ env.END_TIME }}
