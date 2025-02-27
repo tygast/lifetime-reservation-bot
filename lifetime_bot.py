@@ -320,9 +320,33 @@ class LifetimeReservationBot:
         except Exception:
             return False
 
+def wait_until_utc(target_utc_time: str):
+    """
+    Waits until the given target UTC time in HH:MM:SS format, then executes `main()`.
+    If the current time is already past the target, it runs `main()` immediately.
+
+    :param target_utc_time: The UTC time to wait until (e.g., "16:00:00").
+    """
+    now = datetime.datetime.now(datetime.timezone.utc)
+    target = datetime.datetime.strptime(target_utc_time, "%H:%M:%S").time()
+    target_datetime = datetime.datetime.combine(now.date(), target).replace(tzinfo=datetime.timezone.utc)
+
+    if now >= target_datetime:
+        print(f"Current time ({now.strftime('%H:%M:%S')} UTC) is past {target_utc_time}, running main() immediately.")
+        main()
+        return  # Exit the function
+
+    # Otherwise, wait until the target time
+    sleep_seconds = (target_datetime - now).total_seconds()
+    print(f"Sleeping for {sleep_seconds:.2f} seconds...")
+    time.sleep(sleep_seconds)
+
+    print(f"Reached target UTC time: {target_datetime.strftime('%H:%M:%S')} UTC")
+    main()  # Run the function at the exact time
+
 def main():
     bot = LifetimeReservationBot()
     bot.reserve_class()
 
 if __name__ == "__main__":
-    main()
+    wait_until_utc("16:00:00")
