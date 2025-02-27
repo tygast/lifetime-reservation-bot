@@ -49,5 +49,8 @@ jobs:
           echo "START_TIME=${{ env.START_TIME }}" >> .env
           echo "END_TIME=${{ env.END_TIME }}" >> .env
 
+      - name: Debug Environment Variables
+        run: env | grep TARGET_
+
       - name: Run Lifetime Bot
         run: python lifetime_bot.py
