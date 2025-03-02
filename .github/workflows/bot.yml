@@ -2,7 +2,7 @@ name: Lifetime Bot Automation
 
 on:
   schedule:
-    - cron: '30 14 * * 0-4'  # Runs at 9:30 AM from Sunday to Thursday
+    - cron: ${{ vars.CRON_SCHEDULE }}  # Runs at 9:30 AM from Sunday to Thursday
   workflow_dispatch:  # Allows manual trigger
 
 jobs:
