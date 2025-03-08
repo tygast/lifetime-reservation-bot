@@ -19,6 +19,7 @@ class LifetimeReservationBot:
         load_dotenv()
         self.setup_config()
         self.setup_email_config()
+        self.setup_sms_config()
         self.setup_webdriver()
         
     def setup_config(self):
@@ -34,6 +35,9 @@ class LifetimeReservationBot:
         self.END_TIME = os.getenv("END_TIME", "10:00 AM")
         self.LIFETIME_CLUB_NAME = os.getenv("LIFETIME_CLUB_NAME")
         self.LIFETIME_CLUB_STATE = os.getenv("LIFETIME_CLUB_STATE")
+        self.NOTIFICATION_METHOD = os.getenv("NOTIFICATION_METHOD", "email").lower()
+        self.SMS_CARRIER = os.getenv("SMS_CARRIER", "").lower()
+        self.SMS_NUMBER = os.getenv("SMS_NUMBER", "")
         if not self.LIFETIME_CLUB_NAME or not self.LIFETIME_CLUB_STATE:
             raise ValueError("LIFETIME_CLUB_NAME and LIFETIME_CLUB_STATE environment variables are required")
         
@@ -44,6 +48,22 @@ class LifetimeReservationBot:
         self.EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
         self.SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
         self.SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
+        
+    def setup_sms_config(self):
+        """Initialize SMS configuration using email-to-SMS gateways"""
+        self.SMS_GATEWAYS = {
+            "att": "txt.att.net",
+            "tmobile": "tmomail.net",
+            "verizon": "vtext.com",
+            "sprint": "messaging.sprintpcs.com",
+            "boost": "sms.myboostmobile.com",
+            "cricket": "sms.cricketwireless.net",
+            "metro": "mymetropcs.com",
+            "uscellular": "email.uscc.net",
+            "virgin": "vmobl.com",
+            "xfinity": "vtext.com",
+            "googlefi": "msg.fi.google.com",
+        }
         
     def setup_webdriver(self):
         """Initialize Selenium WebDriver"""
@@ -59,6 +79,19 @@ class LifetimeReservationBot:
             options=options
         )
         self.wait = WebDriverWait(self.driver, 30)
+        
+    def send_notification(self, subject, message):
+        """Send notification based on configured method"""
+        if self.NOTIFICATION_METHOD == "email":
+            self.send_email(subject, message)
+        elif self.NOTIFICATION_METHOD == "sms":
+            self.send_sms(subject, message)
+        elif self.NOTIFICATION_METHOD == "both":
+            self.send_email(subject, message)
+            self.send_sms(subject, message)
+        else:
+            print(f"⚠️ Unknown notification method: {self.NOTIFICATION_METHOD}, defaulting to email")
+            self.send_email(subject, message)
         
     def send_email(self, subject, message):
         """Send email notification"""
@@ -76,6 +109,38 @@ class LifetimeReservationBot:
             print(f"📧 Email sent: {subject}")
         except Exception as e:
             print(f"❌ Failed to send email: {e}")
+            
+    def send_sms(self, subject, message):
+        """Send SMS notification using email-to-SMS gateway"""
+        try:
+            if not self.SMS_NUMBER or not self.SMS_CARRIER:
+                print("❌ SMS configuration incomplete. Check SMS_NUMBER and SMS_CARRIER environment variables.")
+                return
+                
+            if self.SMS_CARRIER not in self.SMS_GATEWAYS:
+                print(f"❌ Unknown carrier: {self.SMS_CARRIER}. Supported carriers: {', '.join(self.SMS_GATEWAYS.keys())}")
+                return
+                
+            # Format the message to be concise for SMS
+            sms_message = f"{subject}: {message[:100]}..." if len(message) > 100 else f"{subject}: {message}"
+            
+            # Create the email-to-SMS address
+            sms_email = f"{self.SMS_NUMBER}@{self.SMS_GATEWAYS[self.SMS_CARRIER]}"
+            
+            # Use the existing email functionality to send the SMS
+            msg = MIMEMultipart()
+            msg['From'] = self.EMAIL_SENDER
+            msg['To'] = sms_email
+            msg['Subject'] = ""  # Empty subject for SMS
+            msg.attach(MIMEText(sms_message, 'plain'))
+
+            with smtplib.SMTP(self.SMTP_SERVER, self.SMTP_PORT) as server:
+                server.starttls()
+                server.login(self.EMAIL_SENDER, self.EMAIL_PASSWORD)
+                server.send_message(msg)
+            print(f"📱 SMS sent via email gateway to {sms_email}")
+        except Exception as e:
+            print(f"❌ Failed to send SMS: {e}")
 
     def get_target_date(self):
         """Calculate target date for class reservation"""
@@ -210,9 +275,9 @@ class LifetimeReservationBot:
             
             # Complete reservation
             if self._complete_reservation():
-                # Only send success email if it wasn't already reserved
+                # Only send success notification if it wasn't already reserved
                 if not hasattr(self, 'already_reserved'):
-                    self.send_email(
+                    self.send_notification(
                         "Lifetime Bot - Success",
                         f"Your class was successfully reserved!\n\n{class_details}"
                     )
@@ -221,7 +286,7 @@ class LifetimeReservationBot:
                 
         except Exception as e:
             print(f"❌ Reservation failed: {e}")
-            self.send_email(
+            self.send_notification(
                 "Lifetime Bot - Failure",
                 f"Failed to reserve class:\n\n{class_details}\n\nError: {str(e)}"
             )
@@ -276,7 +341,7 @@ class LifetimeReservationBot:
                     f"Date: {self.get_target_date()}\n"
                     f"Time: {self.START_TIME} - {self.END_TIME}"
                 )
-                self.send_email(
+                self.send_notification(
                     "Lifetime Bot - Already Reserved",
                     f"The class was already reserved or waitlisted. No action needed.\n\n{class_details}"
                 )
@@ -351,3 +416,4 @@ def main():
 
 if __name__ == "__main__":
     wait_until_utc("16:00:00")
+    
