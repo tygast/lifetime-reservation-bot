@@ -3,9 +3,14 @@ import time
 import re
 import datetime
 import smtplib
+import warnings
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from dotenv import load_dotenv
+
+# Suppress all warnings before importing selenium and other libraries
+warnings.filterwarnings("ignore")
+
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -14,11 +19,13 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+
 class LifetimeReservationBot:
     def __init__(self):
         load_dotenv()
         self.setup_config()
         self.setup_email_config()
+        self.setup_sms_config()
         self.setup_webdriver()
         
     def setup_config(self):
@@ -34,6 +41,9 @@ class LifetimeReservationBot:
         self.END_TIME = os.getenv("END_TIME", "10:00 AM")
         self.LIFETIME_CLUB_NAME = os.getenv("LIFETIME_CLUB_NAME")
         self.LIFETIME_CLUB_STATE = os.getenv("LIFETIME_CLUB_STATE")
+        self.NOTIFICATION_METHOD = os.getenv("NOTIFICATION_METHOD", "email").lower()
+        self.SMS_CARRIER = os.getenv("SMS_CARRIER", "").lower()
+        self.SMS_NUMBER = os.getenv("SMS_NUMBER", "")
         if not self.LIFETIME_CLUB_NAME or not self.LIFETIME_CLUB_STATE:
             raise ValueError("LIFETIME_CLUB_NAME and LIFETIME_CLUB_STATE environment variables are required")
         
@@ -44,6 +54,22 @@ class LifetimeReservationBot:
         self.EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
         self.SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
         self.SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
+        
+    def setup_sms_config(self):
+        """Initialize SMS configuration using email-to-SMS gateways"""
+        self.SMS_GATEWAYS = {
+            "att": "mms.att.net",
+            "tmobile": "tmomail.net",
+            "verizon": "vtext.com",
+            "sprint": "messaging.sprintpcs.com",
+            "boost": "sms.myboostmobile.com",
+            "cricket": "sms.cricketwireless.net",
+            "metro": "mymetropcs.com",
+            "uscellular": "email.uscc.net",
+            "virgin": "vmobl.com",
+            "xfinity": "vtext.com",
+            "googlefi": "msg.fi.google.com",
+        }
         
     def setup_webdriver(self):
         """Initialize Selenium WebDriver"""
@@ -60,6 +86,39 @@ class LifetimeReservationBot:
         )
         self.wait = WebDriverWait(self.driver, 30)
         
+    def send_notification(self, subject, message):
+        """Send notification based on configured method"""
+        if self.NOTIFICATION_METHOD == "email":
+            self.send_email(subject, message)
+            print(f"📧 Notification sent via email: {subject}")
+        elif self.NOTIFICATION_METHOD == "sms":
+            self.send_sms(subject, message)
+            print(f"📱 Notification sent via SMS: {subject}")
+        elif self.NOTIFICATION_METHOD == "both":
+            # For "both", we need to ensure both methods are called regardless of errors
+            email_success = False
+            sms_success = False
+            
+            try:
+                self.send_email(subject, message)
+                email_success = True
+                print(f"📧 Notification sent via email: {subject}")
+            except Exception as e:
+                print(f"❌ Failed to send email notification: {e}")
+                
+            try:
+                self.send_sms(subject, message)
+                sms_success = True
+                print(f"📱 Notification sent via SMS: {subject}")
+            except Exception as e:
+                print(f"❌ Failed to send SMS notification: {e}")
+                
+            if not email_success and not sms_success:
+                print("⚠️ All notification methods failed")
+        else:
+            print(f"⚠️ Unknown notification method: {self.NOTIFICATION_METHOD}, defaulting to email")
+            self.send_email(subject, message)
+        
     def send_email(self, subject, message):
         """Send email notification"""
         try:
@@ -73,9 +132,47 @@ class LifetimeReservationBot:
                 server.starttls()
                 server.login(self.EMAIL_SENDER, self.EMAIL_PASSWORD)
                 server.send_message(msg)
-            print(f"📧 Email sent: {subject}")
         except Exception as e:
             print(f"❌ Failed to send email: {e}")
+            
+    def send_sms(self, subject, message):
+        """Send SMS notification using email-to-SMS gateway"""
+        try:
+            if not self.SMS_NUMBER or not self.SMS_CARRIER:
+                error_msg = "❌ SMS configuration incomplete. Check SMS_NUMBER and SMS_CARRIER environment variables."
+                print(error_msg)
+                raise ValueError(error_msg)
+                
+            if self.SMS_CARRIER not in self.SMS_GATEWAYS:
+                error_msg = f"❌ Unknown carrier: {self.SMS_CARRIER}. Supported carriers: {', '.join(self.SMS_GATEWAYS.keys())}"
+                print(error_msg)
+                raise ValueError(error_msg)
+                
+            # Format the message to be concise for SMS - make it even shorter
+            sms_message = f"{subject}: {message[:50]}..." if len(message) > 50 else f"{subject}: {message}"
+            
+            # Create the email-to-SMS address
+            sms_email = f"{self.SMS_NUMBER}@{self.SMS_GATEWAYS[self.SMS_CARRIER]}"
+            
+            # Use the existing email functionality to send the SMS
+            msg = MIMEMultipart()
+            msg['From'] = self.EMAIL_SENDER
+            msg['To'] = sms_email
+            # Some carriers ignore the subject line, others require it to be empty
+            msg['Subject'] = "LT Bot"  # Try with a very short subject
+            
+            # Plain text only
+            msg.attach(MIMEText(sms_message, 'plain'))
+
+            with smtplib.SMTP(self.SMTP_SERVER, self.SMTP_PORT) as server:
+                server.starttls()
+                server.login(self.EMAIL_SENDER, self.EMAIL_PASSWORD)
+                server.send_message(msg)
+            
+            return True
+        except Exception as e:
+            print(f"❌ Failed to send SMS: {e}")
+            raise
 
     def get_target_date(self):
         """Calculate target date for class reservation"""
@@ -156,7 +253,12 @@ class LifetimeReservationBot:
         
         for element in class_elements:
             if self._is_matching_class(element):
+                # Fix the backslash issue by using a raw string or double backslashes
+                class_text = element.text.replace('\n', ' ').strip()
+                print(f"✅ Found matching class: {class_text[:50]}...")
                 return element.find_element(By.TAG_NAME, "a")
+        
+        print("❌ No matching class found on this page")
         return None
 
     def _is_matching_class(self, element):
@@ -209,22 +311,25 @@ class LifetimeReservationBot:
             time.sleep(5)
             
             # Complete reservation
-            if self._complete_reservation():
-                # Only send success email if it wasn't already reserved
+            reservation_result = self._complete_reservation()
+            if reservation_result:
+                # Only send success notification if it wasn't already reserved
                 if not hasattr(self, 'already_reserved'):
-                    self.send_email(
+                    self.send_notification(
                         "Lifetime Bot - Success",
                         f"Your class was successfully reserved!\n\n{class_details}"
                     )
+                return True  # Return True to indicate success
             else:
                 raise Exception("Reservation process failed")
                 
         except Exception as e:
             print(f"❌ Reservation failed: {e}")
-            self.send_email(
+            self.send_notification(
                 "Lifetime Bot - Failure",
                 f"Failed to reserve class:\n\n{class_details}\n\nError: {str(e)}"
             )
+            raise  # Re-raise the exception to be caught by the main function
         finally:
             self.driver.quit()
 
@@ -276,7 +381,7 @@ class LifetimeReservationBot:
                     f"Date: {self.get_target_date()}\n"
                     f"Time: {self.START_TIME} - {self.END_TIME}"
                 )
-                self.send_email(
+                self.send_notification(
                     "Lifetime Bot - Already Reserved",
                     f"The class was already reserved or waitlisted. No action needed.\n\n{class_details}"
                 )
@@ -346,8 +451,48 @@ def wait_until_utc(target_utc_time: str):
     main()  # Run the function at the exact time
 
 def main():
-    bot = LifetimeReservationBot()
-    bot.reserve_class()
+    max_retries = 3
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        bot = None
+        try:
+            print(f"Attempt {retry_count + 1}/{max_retries} to reserve class")
+            bot = LifetimeReservationBot()
+            success = bot.reserve_class()
+            if success:
+                print("✅ Class reservation completed successfully!")
+                break
+        except Exception as e:
+            retry_count += 1
+            print(f"❌ Attempt {retry_count}/{max_retries} failed with error: {str(e)}")
+            
+            # Clear browser cache and cookies if possible
+            try:
+                if bot and hasattr(bot, 'driver') and bot.driver:
+                    print("🧹 Clearing browser cache and cookies...")
+                    bot.driver.delete_all_cookies()
+                    bot.driver.execute_script("window.localStorage.clear();")
+                    bot.driver.execute_script("window.sessionStorage.clear();")
+            except Exception as cleanup_error:
+                print(f"⚠️ Error during cleanup: {cleanup_error}")
+            
+            # If we've reached max retries, send a final notification
+            if retry_count >= max_retries:
+                try:
+                    if bot and hasattr(bot, 'send_notification'):
+                        bot.send_notification(
+                            "Lifetime Bot - All Attempts Failed",
+                            f"Failed to reserve class after {max_retries} attempts. Last error: {str(e)}"
+                        )
+                except Exception as notify_error:
+                    print(f"❌ Could not send failure notification: {notify_error}")
+            else:
+                # Wait before retrying
+                retry_delay = 30  # seconds
+                print(f"⏳ Waiting {retry_delay} seconds before retry {retry_count + 1}/{max_retries}...")
+                time.sleep(retry_delay)
 
 if __name__ == "__main__":
-    wait_until_utc("16:00:00")
+    # wait_until_utc("16:00:00")
+    main()
