@@ -8,7 +8,6 @@ on:
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
@@ -41,6 +40,9 @@ jobs:
           echo "TARGET_DATE=${{ vars.TARGET_DATE }}" >> .env
           echo "START_TIME=${{ vars.START_TIME }}" >> .env
           echo "END_TIME=${{ vars.END_TIME }}" >> .env
+          echo "NOTIFICATION_METHOD=${{ vars.NOTIFICATION_METHOD }}" >> .env
+          echo "SMS_CARRIER=${{ vars.SMS_CARRIER }}" >> .env
+          echo "SMS_NUMBER=${{ secrets.SMS_NUMBER }}" >> .env
 
       - name: Run Lifetime Bot
         run: python lifetime_bot.py
@@ -61,3 +63,6 @@ jobs:
           TARGET_DATE: ${{ vars.TARGET_DATE }}
           START_TIME: ${{ vars.START_TIME }}
           END_TIME: ${{ vars.END_TIME }}
+          NOTIFICATION_METHOD: ${{ vars.NOTIFICATION_METHOD }}
+          SMS_CARRIER: ${{ vars.SMS_CARRIER }}
+          SMS_NUMBER: ${{ secrets.SMS_NUMBER }}
