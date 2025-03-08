@@ -494,5 +494,4 @@ def main():
                 time.sleep(retry_delay)
 
 if __name__ == "__main__":
-    # wait_until_utc("16:00:00")
-    main()
+    wait_until_utc("16:00:00")
