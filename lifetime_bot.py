@@ -20,9 +20,16 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 
+# Clear any cached environment variables
+for key in list(os.environ.keys()):
+    del os.environ[key]
+
+# Now load from .env file
+load_dotenv(override=True)
+
+
 class LifetimeReservationBot:
     def __init__(self):
-        load_dotenv()
         self.setup_config()
         self.setup_email_config()
         self.setup_sms_config()
@@ -148,8 +155,8 @@ class LifetimeReservationBot:
                 print(error_msg)
                 raise ValueError(error_msg)
                 
-            # Format the message to be concise for SMS - make it even shorter
-            sms_message = f"{subject}: {message[:50]}..." if len(message) > 50 else f"{subject}: {message}"
+            # Format the SMS message
+            sms_message = f"{subject}: {message}"
             
             # Create the email-to-SMS address
             sms_email = f"{self.SMS_NUMBER}@{self.SMS_GATEWAYS[self.SMS_CARRIER]}"
@@ -158,8 +165,7 @@ class LifetimeReservationBot:
             msg = MIMEMultipart()
             msg['From'] = self.EMAIL_SENDER
             msg['To'] = sms_email
-            # Some carriers ignore the subject line, others require it to be empty
-            msg['Subject'] = "LT Bot"  # Try with a very short subject
+            msg['Subject'] = "LT Bot" 
             
             # Plain text only
             msg.attach(MIMEText(sms_message, 'plain'))
