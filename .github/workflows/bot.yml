@@ -4,11 +4,24 @@ on:
   schedule:
     - cron: '30 15 * * 0-4'  # Runs at 9:30 AM from Sunday to Thursday
   workflow_dispatch:  # Allows manual trigger
+    inputs:
+        env:
+          description: "Environment to deploy to"
+          required: true
+          default: "dev"
+          type: choice
+          options:
+            - dev
+            - prod
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'schedule' && 'production' || inputs.env }}
     steps:
+      - name: Deploying to selected environment
+        run: echo "Deploying to ${{ github.event_name == 'schedule' && 'production' || inputs.env }}"
+
       - name: Checkout Repository
         uses: actions/checkout@v3
 
