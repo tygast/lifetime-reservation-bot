@@ -6,7 +6,7 @@ on:
   workflow_dispatch:  # Allows manual trigger
     inputs:
         env:
-          description: "Environment to run on"
+          description: "Environment to deploy in"
           required: true
           default: "dev"
           type: choice
@@ -19,8 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ github.event_name == 'schedule' && 'production' || inputs.env }}
     steps:
-      - name: Deploying on selected environment
-        run: echo "Deploying on ${{ github.event_name == 'schedule' && 'production' || inputs.env }}"
+      - name: Deploying in selected environment
+        run: echo "Deploying in ${{ github.event_name == 'schedule' && 'production' || inputs.env }}"
 
       - name: Checkout Repository
         uses: actions/checkout@v3
