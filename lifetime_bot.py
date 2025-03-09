@@ -439,6 +439,13 @@ def wait_until_utc(target_utc_time: str):
 
     :param target_utc_time: The UTC time to wait until (e.g., "16:00:00").
     """
+    # Check if RUN_ON_SCHEDULE is false
+    if os.getenv("RUN_ON_SCHEDULE", "false").lower() == "false":
+        print("RUN_ON_SCHEDULE is false, running main() immediately.")
+        main()
+        return  # Exit the function
+    
+    # Existing code to wait until the target UTC time
     now = datetime.datetime.now(datetime.timezone.utc)
     target = datetime.datetime.strptime(target_utc_time, "%H:%M:%S").time()
     target_datetime = datetime.datetime.combine(now.date(), target).replace(tzinfo=datetime.timezone.utc)
