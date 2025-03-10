@@ -507,4 +507,6 @@ def main():
                 time.sleep(retry_delay)
 
 if __name__ == "__main__":
-    wait_until_utc("16:00:00")
+    # Get target UTC time from environment variable or use default
+    target_time = os.getenv("TARGET_UTC_TIME", "15:00:00")
+    wait_until_utc(target_time)
