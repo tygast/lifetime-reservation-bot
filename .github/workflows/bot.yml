@@ -17,10 +17,10 @@ on:
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    environment: ${{ github.event_name == 'schedule' && 'production' || inputs.env }}
+    environment: ${{ github.event_name == 'schedule' && 'prod' || inputs.env }}
     steps:
       - name: Deploying in selected environment
-        run: echo "Deploying in ${{ github.event_name == 'schedule' && 'production' || inputs.env }}"
+        run: echo "Deploying in ${{ github.event_name == 'schedule' && 'prod' || inputs.env }}"
 
       - name: Checkout Repository
         uses: actions/checkout@v3
