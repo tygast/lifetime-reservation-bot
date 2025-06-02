@@ -2,7 +2,7 @@ name: Lifetime Bot Automation
 
 on:
   schedule:
-    - cron: '30 13 * * 0-4'  # Runs at 9:30 AM CST from Sunday to Thursday
+    - cron: '30 13 * * 0-4'  # Runs at 8:30 AM CST from Sunday to Thursday
   workflow_dispatch:  # Allows manual trigger
     inputs:
         env:
