@@ -508,5 +508,5 @@ def main():
 
 if __name__ == "__main__":
     # Get target UTC time from environment variable or use default
-    target_time = os.getenv("TARGET_UTC_TIME", "14:00:00")
+    target_time = os.getenv("TARGET_UTC_TIME", "16:00:00")
     wait_until_utc(target_time)
