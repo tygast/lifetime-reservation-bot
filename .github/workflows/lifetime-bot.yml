@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 25
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -31,7 +31,6 @@ jobs:
         with:
           python-version: "3.11"
 
-      # Ensures Chrome + matching ChromeDriver (Selenium) are available
       - name: Set up Chrome (and ChromeDriver)
         uses: browser-actions/setup-chrome@v1
 
@@ -40,12 +39,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # Create a .env file exactly like the README expects
-      - name: Write .env from secrets
+      - name: Write .env from secrets (dynamic +7 day target date)
         run: |
-        # Target date = today + 7 days
+          # Target date = today + 7 days
           TARGET_DATE=$(date -u -d "+7 days" +"%Y-%m-%d")
           echo "Using TARGET_DATE=$TARGET_DATE"
+
           cat > .env <<EOF
           LIFETIME_USERNAME=${{ secrets.LIFETIME_USERNAME }}
           LIFETIME_PASSWORD=${{ secrets.LIFETIME_PASSWORD }}
@@ -54,7 +53,7 @@ jobs:
 
           TARGET_CLASS=${{ secrets.TARGET_CLASS }}
           TARGET_INSTRUCTOR=${{ secrets.TARGET_INSTRUCTOR }}
-          TARGET_DATE=${{ secrets.TARGET_DATE }}
+          TARGET_DATE=$TARGET_DATE
           START_TIME=${{ secrets.START_TIME }}
           END_TIME=${{ secrets.END_TIME }}
 
@@ -72,8 +71,9 @@ jobs:
           HEADLESS=${{ secrets.HEADLESS }}
           RUN_ON_SCHEDULE=${{ secrets.RUN_ON_SCHEDULE }}
           EOF
+
           chmod 600 .env
 
-      - name: Run bot
+      - name: Run Lifetime reservation bot
         run: |
           python lifetime_bot.py
