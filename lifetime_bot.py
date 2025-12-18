@@ -61,7 +61,7 @@ class LifetimeReservationBot:
         """Send notification via Telegram"""
         try:
             # Use the token and chat ID from environment variables
-            token = "8436017846:AAHPcsLon2p930Cj-DYG5h6sAdg3lxhGe5E"
+            token = os.getenv("TELEGRAM_TOKEN") 
             chat_id = os.getenv("TELEGRAM_CHAT_ID") 
             
             url = f"https://api.telegram.org/bot{token}/sendMessage"
