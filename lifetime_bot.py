@@ -58,21 +58,27 @@ class LifetimeReservationBot:
             raise ValueError("LIFETIME_CLUB_NAME and LIFETIME_CLUB_STATE environment variables are required")
 
     def send_telegram(self, message):
-    """Send notification via Telegram"""
-    try:
-        url = f"https://api.telegram.org/bot{self.TELEGRAM_TOKEN}/sendMessage"
-        payload = {
-            "chat_id": self.TELEGRAM_CHAT_ID,
-            "text": message,
-            "parse_mode": "HTML"
-        }
-        response = requests.post(url, data=payload)
-        if response.status_code == 200:
-            print("📱 Telegram notification sent!")
-        else:
-            print(f"❌ Telegram failed: {response.text}")
-    except Exception as e:
-        print(f"❌ Error sending Telegram: {e}")
+        """Send notification via Telegram"""
+        try:
+            # Use the token you provided in the first message
+            token = os.getenv("TELEGRAM_TOKEN") 
+            chat_id = os.getenv("TELEGRAM_CHAT_ID") 
+            
+            url = f"https://api.telegram.org/bot{token}/sendMessage"
+            payload = {
+                "chat_id": chat_id,
+                "text": message,
+                "parse_mode": "HTML"
+            }
+            
+            import requests
+            response = requests.post(url, data=payload)
+            if response.status_code == 200:
+                print("📱 Telegram notification sent!")
+            else:
+                print(f"❌ Telegram failed: {response.text}")
+        except Exception as e:
+            print(f"❌ Error sending Telegram: {e}")
         
     def setup_email_config(self):
         """Initialize email configuration"""
