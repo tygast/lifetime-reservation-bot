@@ -39,10 +39,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Write .env from secrets (dynamic +6 day target date)
+      - name: Write .env from secrets (dynamic +7 day target date)
         run: |
-          # Target date = today + 6 days
-          TARGET_DATE=$(date -u -d "+6 days" +"%Y-%m-%d")
+          # Target date = today + 7 days
+          TARGET_DATE=$(date -u -d "+7 days" +"%Y-%m-%d")
           echo "Using TARGET_DATE=$TARGET_DATE"
 
           cat > .env <<EOF
