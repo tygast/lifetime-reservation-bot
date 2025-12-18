@@ -63,6 +63,14 @@ class LifetimeReservationBot:
             # Use the token and chat ID from environment variables
             token = os.getenv("TELEGRAM_TOKEN") 
             chat_id = os.getenv("TELEGRAM_CHAT_ID") 
+
+            if not token or not chat_id:
+                print("⚠️ Telegram Token or Chat ID missing from .env")
+                return
+
+            # FIX: Remove "bot" prefix if it was included in the .env by mistake
+            # This prevents the URL from becoming /botbot123... which causes a 404
+            clean_token = str(token).replace("bot", "").strip()
             
             url = f"https://api.telegram.org/bot{token}/sendMessage"
             payload = {
