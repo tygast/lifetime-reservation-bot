@@ -60,7 +60,7 @@ class LifetimeReservationBot:
     def send_telegram(self, message):
         """Send notification via Telegram"""
         try:
-            # Use the token you provided in the first message
+            # Use the token and chat ID from environment variables
             token = os.getenv("TELEGRAM_TOKEN") 
             chat_id = os.getenv("TELEGRAM_CHAT_ID") 
             
@@ -71,7 +71,6 @@ class LifetimeReservationBot:
                 "parse_mode": "HTML"
             }
             
-            import requests
             response = requests.post(url, data=payload)
             if response.status_code == 200:
                 print("📱 Telegram notification sent!")
@@ -130,7 +129,7 @@ class LifetimeReservationBot:
             print(f"📱 Notification sent via SMS: {subject}")
 
         elif self.NOTIFICATION_METHOD == "telegram":
-            self.send_telegram(subject, message)
+            self.send_telegram(f"<b>{subject}</b>\n{message}")
             print(f"📡 Notification sent via Telegram: {subject}")
 
         elif self.NOTIFICATION_METHOD == "both":
@@ -153,9 +152,10 @@ class LifetimeReservationBot:
                 print(f"❌ Failed to send SMS notification: {e}")
 
             try:
-                self.send_telegram(subject, message)
+                self.send_telegram(f"<b>{subject}</b>\n{message}")
                 print(f"📡 Telegram sent: {subject}")
-            except: pass
+            except: 
+                pass
                 
             if not email_success and not sms_success:
                 print("⚠️ All notification methods failed")
@@ -473,16 +473,13 @@ def wait_until_utc(target_utc_time: str):
     """
     Waits until the given target UTC time in HH:MM:SS format, then executes `main()`.
     If the current time is already past the target, it runs `main()` immediately.
-
-    :param target_utc_time: The UTC time to wait until (e.g., "16:00:00").
     """
     # Check if RUN_ON_SCHEDULE is false
     if os.getenv("RUN_ON_SCHEDULE", "false").lower() == "false":
         print("RUN_ON_SCHEDULE is false, running main() immediately.")
         main()
-        return  # Exit the function
+        return  
     
-    # Existing code to wait until the target UTC time
     now = datetime.datetime.now(datetime.timezone.utc)
     target = datetime.datetime.strptime(target_utc_time, "%H:%M:%S").time()
     target_datetime = datetime.datetime.combine(now.date(), target).replace(tzinfo=datetime.timezone.utc)
@@ -490,15 +487,14 @@ def wait_until_utc(target_utc_time: str):
     if now >= target_datetime:
         print(f"Current time ({now.strftime('%H:%M:%S')} UTC) is past {target_utc_time}, running main() immediately.")
         main()
-        return  # Exit the function
+        return  
 
-    # Otherwise, wait until the target time
     sleep_seconds = (target_datetime - now).total_seconds()
     print(f"Sleeping for {sleep_seconds:.2f} seconds...")
     time.sleep(sleep_seconds)
 
     print(f"Reached target UTC time: {target_datetime.strftime('%H:%M:%S')} UTC")
-    main()  # Run the function at the exact time
+    main()  
 
 def main():
     max_retries = 3
@@ -517,7 +513,6 @@ def main():
             retry_count += 1
             print(f"❌ Attempt {retry_count}/{max_retries} failed with error: {str(e)}")
             
-            # Clear browser cache and cookies if possible
             try:
                 if bot and hasattr(bot, 'driver') and bot.driver:
                     print("🧹 Clearing browser cache and cookies...")
@@ -527,7 +522,6 @@ def main():
             except Exception as cleanup_error:
                 print(f"⚠️ Error during cleanup: {cleanup_error}")
             
-            # If we've reached max retries, send a final notification
             if retry_count >= max_retries:
                 try:
                     if bot and hasattr(bot, 'send_notification'):
@@ -538,12 +532,10 @@ def main():
                 except Exception as notify_error:
                     print(f"❌ Could not send failure notification: {notify_error}")
             else:
-                # Wait before retrying
-                retry_delay = 30  # seconds
+                retry_delay = 30  
                 print(f"⏳ Waiting {retry_delay} seconds before retry {retry_count + 1}/{max_retries}...")
                 time.sleep(retry_delay)
 
 if __name__ == "__main__":
-    # Get target UTC time from environment variable or use default
     target_time = os.getenv("TARGET_UTC_TIME", "16:00:00")
     wait_until_utc(target_time)
