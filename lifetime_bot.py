@@ -3,6 +3,7 @@ import time
 import re
 import datetime
 import smtplib
+import requests
 import warnings
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -51,8 +52,27 @@ class LifetimeReservationBot:
         self.NOTIFICATION_METHOD = os.getenv("NOTIFICATION_METHOD", "email").lower()
         self.SMS_CARRIER = os.getenv("SMS_CARRIER", "").lower()
         self.SMS_NUMBER = os.getenv("SMS_NUMBER", "")
+        self.TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+        self.TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
         if not self.LIFETIME_CLUB_NAME or not self.LIFETIME_CLUB_STATE:
             raise ValueError("LIFETIME_CLUB_NAME and LIFETIME_CLUB_STATE environment variables are required")
+
+    def send_telegram(self, message):
+    """Send notification via Telegram"""
+    try:
+        url = f"https://api.telegram.org/bot{self.TELEGRAM_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": self.TELEGRAM_CHAT_ID,
+            "text": message,
+            "parse_mode": "HTML"
+        }
+        response = requests.post(url, data=payload)
+        if response.status_code == 200:
+            print("📱 Telegram notification sent!")
+        else:
+            print(f"❌ Telegram failed: {response.text}")
+    except Exception as e:
+        print(f"❌ Error sending Telegram: {e}")
         
     def setup_email_config(self):
         """Initialize email configuration"""
@@ -98,9 +118,15 @@ class LifetimeReservationBot:
         if self.NOTIFICATION_METHOD == "email":
             self.send_email(subject, message)
             print(f"📧 Notification sent via email: {subject}")
+
         elif self.NOTIFICATION_METHOD == "sms":
             self.send_sms(subject, message)
             print(f"📱 Notification sent via SMS: {subject}")
+
+        elif self.NOTIFICATION_METHOD == "telegram":
+            self.send_telegram(subject, message)
+            print(f"📡 Notification sent via Telegram: {subject}")
+
         elif self.NOTIFICATION_METHOD == "both":
             # For "both", we need to ensure both methods are called regardless of errors
             email_success = False
@@ -119,6 +145,11 @@ class LifetimeReservationBot:
                 print(f"📱 Notification sent via SMS: {subject}")
             except Exception as e:
                 print(f"❌ Failed to send SMS notification: {e}")
+
+            try:
+                self.send_telegram(subject, message)
+                print(f"📡 Telegram sent: {subject}")
+            except: pass
                 
             if not email_success and not sms_success:
                 print("⚠️ All notification methods failed")
