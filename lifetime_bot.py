@@ -54,6 +54,7 @@ class LifetimeReservationBot:
         self.SMS_NUMBER = os.getenv("SMS_NUMBER", "")
         self.TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
         self.TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+        self.WHO_AM_I = os.getenv("WHO_AM_I")
         if not self.LIFETIME_CLUB_NAME or not self.LIFETIME_CLUB_STATE:
             raise ValueError("LIFETIME_CLUB_NAME and LIFETIME_CLUB_STATE environment variables are required")
 
@@ -345,6 +346,7 @@ class LifetimeReservationBot:
                 f"Instructor: {self.TARGET_INSTRUCTOR}\n"
                 f"Date: {target_date}\n"
                 f"Time: {self.START_TIME} - {self.END_TIME}"
+                f"Who: {self.WHO_AM_I}\n"
             )
             
             # Login and navigate
