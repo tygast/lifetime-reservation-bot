@@ -345,8 +345,8 @@ class LifetimeReservationBot:
                 f"Class: {self.TARGET_CLASS}\n"
                 f"Instructor: {self.TARGET_INSTRUCTOR}\n"
                 f"Date: {target_date}\n"
-                f"Time: {self.START_TIME} - {self.END_TIME}"
-                f"Who: {self.WHO_AM_I}\n"
+                f"Time: {self.START_TIME} - {self.END_TIME}"\n"
+                f"Who: {self.WHO_AM_I}
             )
             
             # Login and navigate
