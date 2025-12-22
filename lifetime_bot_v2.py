@@ -214,7 +214,43 @@ def wait_until_booking_window():
 # MAIN LOOP
 # ==============================
 
+def cleanup_chrome():
+    """Kill any leftover Chrome / ChromeDriver processes (CI safety)"""
+    try:
+        os.system("pkill -f chrome || true")
+        os.system("pkill -f chromedriver || true")
+    except Exception:
+        pass
+
+
+def wait_until_booking_window():
+    """Block until 10:01 AM CST"""
+    now = datetime.datetime.now(CST)
+
+    start = now.replace(
+        hour=BOOKING_START_TIME.hour,
+        minute=BOOKING_START_TIME.minute,
+        second=0,
+        microsecond=0
+    )
+
+    if now < start:
+        sleep_seconds = (start - now).total_seconds()
+        print(f"⏳ Waiting {int(sleep_seconds)} seconds until booking window (10:01 CST)")
+        time.sleep(sleep_seconds)
+
+    print("✅ Booking window open")
+
+
 def main():
+    print("🚀 Lifetime Bot starting")
+
+    # Respect prior success
+    if os.path.exists(SUCCESS_FLAG_FILE):
+        print("🔒 Booking already completed earlier. Exiting.")
+        return
+
+    # Wait until booking window opens
     wait_until_booking_window()
 
     while True:
@@ -227,22 +263,37 @@ def main():
             microsecond=0
         )
 
+        # ⏹ Cutoff reached
         if now >= cutoff:
-            bot = LifetimeReservationBot()
-            bot.send_notification(
-                "Lifetime Bot - Failed",
-                "❌ Failed to book class by 10:15 AM CST"
-            )
+            print("🚨 Cutoff reached (10:15 CST). Sending failure notification.")
+
+            try:
+                bot = LifetimeReservationBot()
+                bot.send_notification(
+                    "Lifetime Bot - Booking Failed",
+                    "❌ Failed to book class by 10:15 AM CST."
+                )
+            except Exception as notify_error:
+                print(f"⚠️ Could not send failure notification: {notify_error}")
+
             return
 
+        # 🧹 Clean up before attempt
+        cleanup_chrome()
+
         try:
+            print("🎯 Attempting booking...")
             bot = LifetimeReservationBot()
+
             if bot.reserve_class():
+                print("✅ Booking successful. Exiting.")
                 return
+
         except Exception as e:
             print(f"⚠️ Booking attempt failed: {e}")
 
-        print("🔁 Retrying in 60 seconds...")
+        # 🔁 Retry
+        print(f"🔁 Retrying in {RETRY_INTERVAL_SECONDS} seconds...")
         time.sleep(RETRY_INTERVAL_SECONDS)
 
 
