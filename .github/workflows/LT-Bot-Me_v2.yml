@@ -1,4 +1,4 @@
-name: Lifetime Bot Automation - Dieter
+name: Lifetime Bot Automation - Dieter_v2
 
 on:
   workflow_dispatch: {}
