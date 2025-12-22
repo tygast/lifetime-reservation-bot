@@ -81,4 +81,4 @@ jobs:
 
       - name: Run Lifetime reservation bot
         run: |
-          python lifetime_bot.py
+          python lifetime_bot_v2.py
