@@ -30,8 +30,8 @@ load_dotenv(override=True)
 
 CST = pytz.timezone("America/Chicago")
 
-BOOKING_START_TIME = datetime.time(10, 35)    # 10:01 AM CST = 10, 1
-BOOKING_CUTOFF_TIME = datetime.time(11, 15)  # 10:15 AM CST = 10, 15
+BOOKING_START_TIME = datetime.time(10, 01)    # 10:01 AM CST = 10, 1
+BOOKING_CUTOFF_TIME = datetime.time(10, 15)  # 10:15 AM CST = 10, 15
 RETRY_INTERVAL_SECONDS = 60
 SUCCESS_FLAG_FILE = ".booking_success"
 
