@@ -128,18 +128,22 @@ class LifetimeReservationBot:
     # ==============================
 
     def setup_webdriver(self):
-        options = webdriver.ChromeOptions()
-        options.add_argument("--disable-gpu")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--window-size=1920,1080")
-        if os.getenv("HEADLESS") == "true":
-            options.add_argument("--headless=new")
+    options = webdriver.ChromeOptions()
 
-        self.driver = webdriver.Chrome(
-            service=Service(ChromeDriverManager().install()),
-            options=options
-        )
-        self.wait = WebDriverWait(self.driver, 30)
+    # REQUIRED for GitHub Actions
+    options.add_argument("--headless=new")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--window-size=1920,1080")
+
+    # Reduce crash risk
+    options.add_argument("--disable-features=VizDisplayCompositor")
+    options.add_argument("--disable-software-rasterizer")
+
+    # Use ChromeDriver provided by setup-chrome
+    self.driver = webdriver.Chrome(options=options)
+    self.wait = WebDriverWait(self.driver, 30)
 
     # ==============================
     # BOOKING
