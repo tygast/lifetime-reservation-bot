@@ -420,7 +420,7 @@ def send_startup_notification():
         print(f"⚠️ Could not send startup notification: {e}")
 
 def main():
-    print("🚀 Lifetime Bot starting")
+    print("🚀 Lifetime Bot starting for {self.WHO_AM_I}")
 
     send_startup_notification()
 
