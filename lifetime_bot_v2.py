@@ -412,7 +412,7 @@ def send_startup_notification():
         bot = LifetimeReservationBot()
         now_cst = datetime.datetime.now(CST).strftime("%Y-%m-%d %I:%M:%S %p CST")
         bot.send_telegram(
-            f"🚀 <b>Lifetime Bot Started</b>\n"
+            f"🚀 <b>Lifetime Bot Started for {self.WHO_AM_I}</b>\n"
             f"Time: {now_cst}\n"
             f"Status: Initialized and waiting for booking window."
         )
