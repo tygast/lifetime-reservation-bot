@@ -1,88 +1,142 @@
-# Lifetime Fitness Reservation Bot
+# Lifetime Fitness Reservation Bot v2 (Iterated from Tyler's Original)
 
 An automated bot that helps you reserve classes at Life Time Fitness clubs. The bot can be scheduled to run at specific times to secure your spot in popular classes as soon as they become available.
 
-## Features
+This version is time-window aware, CI-safe, retry-capable, and includes Telegram startup + result notifications so you always know what the bot is doing.
 
-- Automatically logs into your Life Time Fitness account
-- Navigates to the class schedule for your preferred club
-- Finds and reserves your target class based on class name, instructor, and time
-- Handles waitlist scenarios
-- Sends notifications via email and/or SMS about reservation status
-- Can be scheduled to run at specific times (e.g., when registration opens)
+⸻
 
-## Requirements
+🚀 Key Features
+	•	Automatically logs into your Life Time Fitness account
+	•	Navigates directly to your club’s class schedule
+	•	Finds a target class by:
+	•	Class name
+	•	Instructor
+	•	Start & end time
+	•	Reserves or waitlists the class
+	•	Retries every 60 seconds if the class isn’t immediately available
+	•	Hard cutoff time to avoid infinite retries
+	•	Prevents duplicate bookings using a success flag
+	•	Sends notifications via:
+	•	Telegram
+	•	Email (optional)
+	•	Sends a startup Telegram notification when the script initializes and begins waiting
+	•	Fully compatible with GitHub Actions (headless Chrome)
 
-- Python 3.7+
-- Chrome browser
-- Selenium WebDriver
-- Gmail account (or other email provider) for sending notifications
+⸻
 
-## Installation
+🕒 Booking Logic (Important)
 
-1. Clone this repository:
-   ```
-   git clone https://github.com/yourusername/lifetime-bot.git
-   cd lifetime-bot
-   ```
+Life Time classes open 8 days before the class date at 10:00 AM local club time.
 
-2. Create a virtual environment and activate it:
-   ```
-   python -m venv .venv
-   
-   # On Windows:
-   .venv\Scripts\activate
-   
-   # On macOS/Linux:
-   source .venv/bin/activate
-   ```
+This bot:
+	•	Begins attempting bookings at 10:01 AM CST
+	•	Retries every 60 seconds
+	•	Stops trying at 10:15 AM CST
+	•	Runs only on booking-relevant days:
+	•	Sunday
+	•	Monday
+	•	Wednesday
+	•	Thursday
 
-3. Install the required packages:
-   ```
-   pip install -r requirements.txt
-   ```
+This correctly books:
+	•	Monday
+	•	Tuesday
+	•	Thursday
+	•	Friday classes
 
-4. Create a `.env` file in the project directory with your configuration (see Configuration section below)
+⸻
 
-## Configuration
+📦 Requirements
+	•	Python 3.9+
+	•	Google Chrome (provided automatically in GitHub Actions)
+	•	A Life Time Fitness account
+	•	Telegram bot (for notifications)
+	•	GitHub repository with Actions enabled
 
-Create a `.env` file with the following variables:
+⸻
 
-```ini
-# Lifetime Credentials
+📥 Installation (Local Development)
+
+Clone the repository:
+
+git clone https://github.com/yourusername/lifetime-reservation-bot.git
+cd lifetime-reservation-bot
+
+Create and activate a virtual environment:
+
+python -m venv .venv
+
+Windows:
+.venv\Scripts\activate
+
+macOS / Linux:
+source .venv/bin/activate
+
+Install dependencies:
+
+pip install -r requirements.txt
+
+⸻
+
+🔐 Configuration (.env)
+
+Create a .env file locally or via GitHub Actions secrets.
+
+⸻
+
+🔑 Required Credentials
+
 LIFETIME_USERNAME=your_lifetime_email
 LIFETIME_PASSWORD=your_lifetime_password
-LIFETIME_CLUB_NAME=your_club_name
-LIFETIME_CLUB_STATE=your_club_state
 
-# Class Details
-TARGET_CLASS=your_class_name
-TARGET_INSTRUCTOR=your_instructor_name
+⸻
+
+🏋️ Club & Class Configuration
+
+LIFETIME_CLUB_NAME=San Antonio 281
+LIFETIME_CLUB_STATE=TX
+
+TARGET_CLASS=Alpha
+TARGET_INSTRUCTOR=Zack W
+START_TIME=8:00 AM
+END_TIME=9:00 AM
+
+⚠️ Exact string matching matters.
+
+⸻
+
+📅 Target Date
+
 TARGET_DATE=YYYY-MM-DD
-START_TIME=your_start_time
-END_TIME=your_end_time
 
-# Notification Method
-# Options: "email", "sms", or "both"
+In GitHub Actions, this is automatically set to today + 8 days.
+
+⸻
+
+📲 Notification Configuration
+
+Telegram (Recommended)
+NOTIFICATION_METHOD=telegram
+TELEGRAM_TOKEN=123456789:ABCDEF_your_bot_token
+TELEGRAM_CHAT_ID=123456789
+
+The bot sends:
+	•	Startup notification
+	•	Success notification
+	•	Already-reserved notification
+	•	Final failure notification (after cutoff)
+
+⸻
+
+Email (Optional)
 NOTIFICATION_METHOD=email
 
-# Email Configuration
 EMAIL_SENDER=your_email@gmail.com
-EMAIL_PASSWORD=your_app_specific_password
+EMAIL_PASSWORD=your_app_password
 EMAIL_RECEIVER=your_email@gmail.com
 SMTP_SERVER=smtp.gmail.com
 SMTP_PORT=587
-
-# SMS Configuration (for carrier gateway)
-SMS_NUMBER=1234567890  # Your phone number without any formatting
-SMS_CARRIER=verizon    # Your carrier from the supported list
-
-# Bot Configuration
-HEADLESS=true
-RUN_ON_SCHEDULE=true
-```
-
-## Email Setup
 
 1. Use a Gmail account
 2. Enable 2-Step Verification in your Google Account
@@ -90,92 +144,105 @@ RUN_ON_SCHEDULE=true
    - Go to Google Account Settings → Security
    - Under "2-Step Verification", scroll to "App passwords"
    - Generate a new app password
-   - Use this password for EMAIL_PASSWORD in your `.env` file
+   - Use this password for EMAIL_PASSWORD in your .env file
 
-## SMS Notification Setup
+⸻
 
-The bot uses email-to-SMS gateways provided by mobile carriers to send text messages. No additional accounts or services are required beyond your existing email setup.
+⚙️ Runtime Flags
 
-### Supported SMS Carriers
+RUN_ON_SCHEDULE=true
 
-The following carriers are supported for SMS notifications:
+⸻
 
-- `att` - AT&T
-- `tmobile` - T-Mobile
-- `verizon` - Verizon
-- `sprint` - Sprint
-- `boost` - Boost Mobile
-- `cricket` - Cricket Wireless
-- `metro` - Metro by T-Mobile
-- `uscellular` - US Cellular
-- `virgin` - Virgin Mobile
-- `xfinity` - Xfinity Mobile
-- `googlefi` - Google Fi
+⏱️ Constant Time Configuration (Defined in Code)
 
-To use SMS notifications:
-1. Set `NOTIFICATION_METHOD` to either `sms` or `both` in your `.env` file
-2. Set `SMS_NUMBER` to your phone number (digits only, no formatting)
-3. Set `SMS_CARRIER` to your carrier from the supported list
+These values live directly in lifetime_bot.py and must be defined with precise syntax:
 
-## Scheduling
-The bot runs automatically via GitHub Actions:
-- Schedule: 10:00 UTC Sunday through Thursday (`0 10 * * 0-4`)
-- Can also be triggered manually through GitHub Actions interface
+BOOKING_START_TIME = datetime.time(10, 1)
+BOOKING_CUTOFF_TIME = datetime.time(10, 15)
+RETRY_INTERVAL_SECONDS = 60
+SUCCESS_FLAG_FILE = “.booking_success”
 
-### Running at a Specific UTC Time
+⚠️ Syntax Rules (Important)
+	•	Use datetime.time(HOUR, MINUTE)
+	•	No leading zeros (01 is invalid, 1 is correct)
+	•	Uses a 24-hour clock internally
 
-The bot includes functionality to wait until a specific UTC time before running. This is useful for ensuring the bot runs exactly when class registration opens.
+Examples:
 
-The default time is set to 16:00:00 UTC. You can modify this in the `lifetime_bot.py` file:
+datetime.time(10, 1)   → 10:01 AM
+datetime.time(11, 15)  → 11:15 AM
+datetime.time(16, 0)   → 4:00 PM
 
-```python
-if __name__ == "__main__":
-    wait_until_utc("16:00:00")  # Change this to your desired UTC time
-```
+⸻
 
-## Local Development
+⏳ Script Lifecycle
+	1.	GitHub Actions starts the job
+	2.	Script initializes
+	3.	Startup Telegram notification is sent
+	4.	Script waits until booking window opens
+	5.	Booking attempts begin
+	6.	Retries every 60 seconds if needed
+	7.	On success:
+	•	Writes .booking_success
+	•	Sends success notification
+	8.	On cutoff:
+	•	Sends failure notification
+	•	Exits cleanly
 
-### Requirements
-- Python 3.9+
-- Chrome browser
-- Required packages: `selenium`, `python-dotenv`, `webdriver-manager`
+⸻
 
-### Local Setup
-1. Clone the repository
-2. Create a `.env` file with the same variables as GitHub Secrets
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-4. Run locally:
-   ```bash
-   python lifetime_bot.py
-   ```
+🧠 GitHub Actions Scheduling
 
-## Troubleshooting
+The workflow runs before the booking window and lets the script handle timing.
 
-### Common Issues
+Runs on:
+	•	Sunday
+	•	Monday
+	•	Wednesday
+	•	Thursday
 
-1. **Login Failures**: Ensure your Life Time Fitness credentials are correct in the `.env` file.
+Example cron (UTC):
 
-2. **Class Not Found**: Verify the class name, instructor, and time match exactly what's shown on the Life Time website.
+30-59/5 15 * * 0,1,3,4
+0-5/5 16 * * 0,1,3,4
 
-3. **Email Notification Failures**: 
-   - For Gmail, you need to use an App Password instead of your regular password
-   - Enable "Less secure app access" or use 2FA with app passwords
+⸻
 
-4. **SMS Notification Failures**:
-   - Verify your phone number is entered correctly without any formatting
-   - Ensure you've selected the correct carrier
+🧪 Testing Tips
 
-- Check GitHub Actions logs for execution details
-- Email/SMS notifications will be sent for both successful and failed reservations
-- For local testing, set `HEADLESS=false` to watch the automation in action
+To test without waiting until 10:01 AM:
 
-## Security Note
-- Never commit your `.env` file
-- Always use GitHub Secrets for sensitive information
-- Regularly rotate your email app password
+Temporarily change in code:
 
-## License
-MIT License
+BOOKING_START_TIME = datetime.time(10, 35)
+BOOKING_CUTOFF_TIME = datetime.time(10, 40)
+
+Revert these values before production runs.
+
+⸻
+
+🛠️ Troubleshooting
+
+Common Issues
+
+Telegram not sending:
+	•	Verify bot token and chat ID
+	•	Ensure the bot can message the chat
+
+Class not found:
+	•	Verify spelling, spacing, and time format
+	•	Confirm instructor name matches exactly
+
+Chrome fails in GitHub Actions:
+	•	Script is CI-safe
+	•	webdriver-manager is not used
+	•	Ensure browser-actions/setup-chrome@v1 is present
+
+⸻
+
+🔒 Security Notes
+	•	Never commit .env
+	•	Use GitHub Secrets for credentials
+	•	Rotate credentials periodically
+	•	Treat Telegram tokens like passwords
