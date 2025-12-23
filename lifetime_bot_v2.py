@@ -30,7 +30,7 @@ load_dotenv(override=True)
 
 CST = pytz.timezone("America/Chicago")
 
-BOOKING_START_TIME = datetime.time(10, 01)    # 10:01 AM CST = 10, 1
+BOOKING_START_TIME = datetime.time(10, 1)    # 10:01 AM CST = 10, 1
 BOOKING_CUTOFF_TIME = datetime.time(10, 15)  # 10:15 AM CST = 10, 15
 RETRY_INTERVAL_SECONDS = 60
 SUCCESS_FLAG_FILE = ".booking_success"
@@ -403,9 +403,26 @@ def wait_until_booking_window():
 
     print("✅ Booking window open")
 
+# ==============================
+# 🔔 STARTUP NOTIFICATION (ADDED)
+# ==============================
+
+def send_startup_notification():
+    try:
+        bot = LifetimeReservationBot()
+        now_cst = datetime.datetime.now(CST).strftime("%Y-%m-%d %I:%M:%S %p CST")
+        bot.send_telegram(
+            f"🚀 <b>Lifetime Bot Started</b>\n"
+            f"Time: {now_cst}\n"
+            f"Status: Initialized and waiting for booking window."
+        )
+    except Exception as e:
+        print(f"⚠️ Could not send startup notification: {e}")
 
 def main():
     print("🚀 Lifetime Bot starting")
+
+    send_startup_notification()
 
     # Respect prior success (within this run / workspace)
     if os.path.exists(SUCCESS_FLAG_FILE):
