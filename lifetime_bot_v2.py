@@ -31,7 +31,7 @@ load_dotenv(override=True)
 CST = pytz.timezone("America/Chicago")
 
 BOOKING_START_TIME = datetime.time(10, 1)    # 10:01 AM CST = 10, 1
-BOOKING_CUTOFF_TIME = datetime.time(10, 15)  # 10:15 AM CST = 10, 15
+BOOKING_CUTOFF_TIME = datetime.time(23, 15)  # 10:15 AM CST = 10, 15
 RETRY_INTERVAL_SECONDS = 60
 SUCCESS_FLAG_FILE = ".booking_success"
 
@@ -52,7 +52,7 @@ class LifetimeReservationBot:
         self.TARGET_INSTRUCTOR = os.getenv("TARGET_INSTRUCTOR")
         self.TARGET_DATE = os.getenv("TARGET_DATE")
         self.START_TIME = os.getenv("START_TIME")
-        self.END_TIME = os.getenv("END_TIME", "10:00 AM")
+        self.END_TIME = os.getenv("END_TIME")
         self.LIFETIME_CLUB_NAME = os.getenv("LIFETIME_CLUB_NAME")
         self.LIFETIME_CLUB_STATE = os.getenv("LIFETIME_CLUB_STATE")
         self.NOTIFICATION_METHOD = os.getenv("NOTIFICATION_METHOD", "email").lower()
