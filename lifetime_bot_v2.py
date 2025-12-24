@@ -65,7 +65,7 @@ def send_early_startup_notification():
 CST = pytz.timezone("America/Chicago")
 
 BOOKING_START_TIME = datetime.time(10, 1)    # 10:01 AM CST = 10, 1
-BOOKING_CUTOFF_TIME = datetime.time(23, 15)  # 10:15 AM CST = 10, 15
+BOOKING_CUTOFF_TIME = datetime.time(10, 15)  # 10:15 AM CST = 10, 15
 RETRY_INTERVAL_SECONDS = 60
 SUCCESS_FLAG_FILE = ".booking_success"
 
