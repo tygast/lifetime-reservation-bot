@@ -24,6 +24,40 @@ for key in list(os.environ.keys()):
 
 load_dotenv(override=True)
 
+# ======================================================
+# EARLY STARTUP NOTIFICATION
+# Sends Telegram message as soon as script is triggered
+# (before waiting, Selenium, or main loop)
+# ======================================================
+
+def send_early_startup_notification():
+    try:
+        token = os.getenv("TELEGRAM_TOKEN")
+        chat_id = os.getenv("TELEGRAM_CHAT_ID")
+        who = os.getenv("WHO_AM_I", "Unknown")
+
+        if not token or not chat_id:
+            print("⚠️ Telegram startup notification skipped (missing token/chat id)")
+            return
+
+        now_cst = datetime.datetime.now(CST).strftime("%Y-%m-%d %I:%M:%S %p CST")
+
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": (
+                f"🚀 <b>Lifetime Bot Triggered — {who}</b>\n"
+                f"Time: {now_cst}\n"
+                "Status: Script loaded and execution has begun."
+            ),
+            "parse_mode": "HTML"
+        }
+
+        requests.post(url, data=payload, timeout=10)
+
+    except Exception as e:
+        print(f"⚠️ Early startup notification failed: {e}")
+
 # ==============================
 # TIME CONFIG
 # ==============================
@@ -477,4 +511,5 @@ def main():
 
 
 if __name__ == "__main__":
+    send_early_startup_notification()
     main()
