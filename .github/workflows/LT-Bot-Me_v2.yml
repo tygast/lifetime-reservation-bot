@@ -53,8 +53,8 @@ jobs:
           LIFETIME_CLUB_STATE=TX
           TARGET_INSTRUCTOR=Zack W
           TARGET_CLASS=Alpha
-          START_TIME=9:00 AM
-          END_TIME=10:00 AM
+          START_TIME=6:00 AM
+          END_TIME=7:00 AM
           WHO_AM_I=Dieter
           HEADLESS=Yes
           RUN_ON_SCHEDULE=Yes
