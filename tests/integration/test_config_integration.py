@@ -43,11 +43,12 @@ class TestBotConfigIntegration:
             assert config.email.smtp_port == 587
             assert config.email.is_valid() is True
 
-            # Verify SMS config
-            assert config.sms.number == "1234567890"
-            assert config.sms.carrier == "att"
+            # Verify SMS config (Twilio)
+            assert config.sms.account_sid == "ACtest123456789"
+            assert config.sms.auth_token == "test_auth_token"
+            assert config.sms.from_number == "+15551234567"
+            assert config.sms.to_number == "+15559876543"
             assert config.sms.is_valid() is True
-            assert config.sms.get_gateway_email() == "1234567890@mms.att.net"
 
             # Verify bot settings
             assert config.notification_method == "email"
@@ -77,16 +78,20 @@ class TestBotConfigIntegration:
             "LIFETIME_CLUB_NAME": "Test Club",
             "LIFETIME_CLUB_STATE": "CA",
             "NOTIFICATION_METHOD": "sms",
-            "SMS_NUMBER": "5551234567",
-            "SMS_CARRIER": "verizon",
+            "TWILIO_ACCOUNT_SID": "ACtest123",
+            "TWILIO_AUTH_TOKEN": "authtoken123",
+            "TWILIO_FROM_NUMBER": "+15551234567",
+            "SMS_NUMBER": "+15559876543",
         }
         with patch.dict(os.environ, env, clear=True):
             config = BotConfig.from_env(reload_env=False)
 
             assert config.notification_method == "sms"
-            assert config.sms.number == "5551234567"
-            assert config.sms.carrier == "verizon"
-            assert config.sms.get_gateway_email() == "5551234567@vtext.com"
+            assert config.sms.account_sid == "ACtest123"
+            assert config.sms.auth_token == "authtoken123"
+            assert config.sms.from_number == "+15551234567"
+            assert config.sms.to_number == "+15559876543"
+            assert config.sms.is_valid() is True
 
     def test_config_with_both_notifications(self) -> None:
         """Test configuration with both notification methods."""
@@ -99,8 +104,10 @@ class TestBotConfigIntegration:
             "EMAIL_SENDER": "sender@gmail.com",
             "EMAIL_PASSWORD": "emailpass",
             "EMAIL_RECEIVER": "receiver@gmail.com",
-            "SMS_NUMBER": "5551234567",
-            "SMS_CARRIER": "tmobile",
+            "TWILIO_ACCOUNT_SID": "ACtest123",
+            "TWILIO_AUTH_TOKEN": "authtoken123",
+            "TWILIO_FROM_NUMBER": "+15551234567",
+            "SMS_NUMBER": "+15559876543",
         }
         with patch.dict(os.environ, env, clear=True):
             config = BotConfig.from_env(reload_env=False)

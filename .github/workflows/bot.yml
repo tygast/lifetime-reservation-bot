@@ -58,7 +58,9 @@ jobs:
           echo "START_TIME=${{ vars.START_TIME }}" >> .env
           echo "END_TIME=${{ vars.END_TIME }}" >> .env
           echo "NOTIFICATION_METHOD=${{ vars.NOTIFICATION_METHOD }}" >> .env
-          echo "SMS_CARRIER=${{ vars.SMS_CARRIER }}" >> .env
+          echo "TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }}" >> .env
+          echo "TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }}" >> .env
+          echo "TWILIO_FROM_NUMBER=${{ secrets.TWILIO_FROM_NUMBER }}" >> .env
           echo "SMS_NUMBER=${{ secrets.SMS_NUMBER }}" >> .env
 
       - name: Run Lifetime Bot
@@ -81,5 +83,7 @@ jobs:
           START_TIME: ${{ vars.START_TIME }}
           END_TIME: ${{ vars.END_TIME }}
           NOTIFICATION_METHOD: ${{ vars.NOTIFICATION_METHOD }}
-          SMS_CARRIER: ${{ vars.SMS_CARRIER }}
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_FROM_NUMBER: ${{ secrets.TWILIO_FROM_NUMBER }}
           SMS_NUMBER: ${{ secrets.SMS_NUMBER }}

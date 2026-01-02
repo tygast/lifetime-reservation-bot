@@ -58,15 +58,15 @@ class TestEmailNotificationIntegration:
 class TestSMSNotificationIntegration:
     """Integration tests for SMSNotificationService."""
 
-    @patch("lifetime_bot.notifications.sms.smtplib.SMTP")
+    @patch("lifetime_bot.notifications.sms.Client")
     def test_sms_service_full_flow(
-        self, mock_smtp: MagicMock, sms_config: SMSConfig, email_config: EmailConfig
+        self, mock_client_class: MagicMock, sms_config: SMSConfig
     ) -> None:
-        """Test complete SMS notification flow."""
-        mock_server = MagicMock()
-        mock_smtp.return_value.__enter__.return_value = mock_server
+        """Test complete SMS notification flow via Twilio."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
 
-        service = SMSNotificationService(sms_config, email_config)
+        service = SMSNotificationService(sms_config)
 
         # Verify service is configured
         assert service.is_configured() is True
@@ -80,46 +80,59 @@ class TestSMSNotificationIntegration:
         # Verify success
         assert result is True
 
-        # Verify email was sent to correct SMS gateway
-        sent_message = mock_server.send_message.call_args[0][0]
-        expected_gateway = sms_config.get_gateway_email()
-        assert sent_message["To"] == expected_gateway
+        # Verify Twilio client was created with correct credentials
+        mock_client_class.assert_called_once_with(
+            sms_config.account_sid, sms_config.auth_token
+        )
 
-    @patch("lifetime_bot.notifications.sms.smtplib.SMTP")
-    def test_sms_service_all_carriers(
-        self, mock_smtp: MagicMock, email_config: EmailConfig
+        # Verify message was sent correctly
+        mock_client.messages.create.assert_called_once_with(
+            body="Test SMS: Short SMS message",
+            from_=sms_config.from_number,
+            to=sms_config.to_number,
+        )
+
+    @patch("lifetime_bot.notifications.sms.Client")
+    def test_sms_service_with_different_configs(
+        self, mock_client_class: MagicMock
     ) -> None:
-        """Test SMS notifications for all supported carriers."""
-        mock_server = MagicMock()
-        mock_smtp.return_value.__enter__.return_value = mock_server
+        """Test SMS notifications with various configurations."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
 
-        # Use actual carriers from SMS_GATEWAYS
-        carriers_and_gateways = {
-            "att": "mms.att.net",
-            "tmobile": "tmomail.net",
-            "verizon": "vtext.com",
-            "sprint": "messaging.sprintpcs.com",
-            "boost": "sms.myboostmobile.com",
-            "cricket": "sms.cricketwireless.net",
-            "metro": "mymetropcs.com",
-            "uscellular": "email.uscc.net",
-            "virgin": "vmobl.com",
-            "xfinity": "vtext.com",
-            "googlefi": "msg.fi.google.com",
-        }
+        test_configs = [
+            {
+                "account_sid": "AC111111111111111111111111111111",
+                "auth_token": "token1",
+                "from_number": "+15551111111",
+                "to_number": "+15552222222",
+            },
+            {
+                "account_sid": "AC222222222222222222222222222222",
+                "auth_token": "token2",
+                "from_number": "+15553333333",
+                "to_number": "+15554444444",
+            },
+        ]
 
-        for carrier, gateway in carriers_and_gateways.items():
-            mock_smtp.reset_mock()
-            mock_server.reset_mock()
+        for config_data in test_configs:
+            mock_client_class.reset_mock()
+            mock_client.reset_mock()
 
-            sms_config = SMSConfig(number="5551234567", carrier=carrier)
-            service = SMSNotificationService(sms_config, email_config)
+            sms_config = SMSConfig(**config_data)
+            service = SMSNotificationService(sms_config)
 
             result = service.send("Test", "Message")
 
-            assert result is True, f"Failed for carrier: {carrier}"
-            sent_message = mock_server.send_message.call_args[0][0]
-            assert sent_message["To"] == f"5551234567@{gateway}", f"Wrong gateway for {carrier}"
+            assert result is True
+            mock_client_class.assert_called_once_with(
+                config_data["account_sid"], config_data["auth_token"]
+            )
+            mock_client.messages.create.assert_called_once_with(
+                body="Test: Message",
+                from_=config_data["from_number"],
+                to=config_data["to_number"],
+            )
 
 
 class TestNotificationServiceInteraction:
@@ -141,22 +154,21 @@ class TestNotificationServiceInteraction:
         assert result is True
         mock_server.send_message.assert_called_once()
 
-    @patch("lifetime_bot.notifications.sms.smtplib.SMTP")
+    @patch("lifetime_bot.notifications.sms.Client")
     def test_sms_service_can_send_independently(
         self,
-        mock_smtp: MagicMock,
-        email_config: EmailConfig,
+        mock_client_class: MagicMock,
         sms_config: SMSConfig,
     ) -> None:
         """Test that SMS service can send independently."""
-        mock_server = MagicMock()
-        mock_smtp.return_value.__enter__.return_value = mock_server
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
 
-        sms_service = SMSNotificationService(sms_config, email_config)
+        sms_service = SMSNotificationService(sms_config)
         result = sms_service.send("Test Subject", "Test Message")
 
         assert result is True
-        mock_server.send_message.assert_called_once()
+        mock_client.messages.create.assert_called_once()
 
     @patch("lifetime_bot.notifications.email.smtplib.SMTP")
     def test_service_handles_connection_failure(
@@ -183,5 +195,21 @@ class TestNotificationServiceInteraction:
 
         service = EmailNotificationService(email_config)
         result = service.send("Test", "Message")
+
+        assert result is False
+
+    @patch("lifetime_bot.notifications.sms.Client")
+    def test_sms_service_handles_twilio_error(
+        self,
+        mock_client_class: MagicMock,
+        sms_config: SMSConfig,
+    ) -> None:
+        """Test that SMS service handles Twilio errors gracefully."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.messages.create.side_effect = Exception("Twilio API error")
+
+        sms_service = SMSNotificationService(sms_config)
+        result = sms_service.send("Test Subject", "Test Message")
 
         assert result is False

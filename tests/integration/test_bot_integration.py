@@ -85,31 +85,33 @@ class TestBotNotificationIntegration:
         sent_message = mock_server.send_message.call_args[0][0]
         assert sent_message["Subject"] == "Test Subject"
 
-    @patch("lifetime_bot.notifications.sms.smtplib.SMTP")
+    @patch("lifetime_bot.notifications.sms.Client")
     @patch("lifetime_bot.bot.create_driver")
     def test_bot_sends_sms_notification(
         self,
         mock_create_driver: MagicMock,
-        mock_smtp: MagicMock,
+        mock_client_class: MagicMock,
         bot_config: BotConfig,
     ) -> None:
-        """Test bot sends SMS notifications correctly."""
+        """Test bot sends SMS notifications correctly via Twilio."""
         mock_driver = MagicMock()
         mock_wait = MagicMock()
         mock_create_driver.return_value = (mock_driver, mock_wait)
 
-        mock_server = MagicMock()
-        mock_smtp.return_value.__enter__.return_value = mock_server
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
 
         bot_config.notification_method = "sms"
         bot = LifetimeReservationBot(config=bot_config)
 
         bot.send_notification("Test Subject", "Test Message")
 
-        # Verify SMS was sent to gateway
-        mock_server.send_message.assert_called_once()
-        sent_message = mock_server.send_message.call_args[0][0]
-        assert "@mms.att.net" in sent_message["To"]
+        # Verify SMS was sent via Twilio
+        mock_client.messages.create.assert_called_once()
+        call_kwargs = mock_client.messages.create.call_args.kwargs
+        assert call_kwargs["body"] == "Test Subject: Test Message"
+        assert call_kwargs["from_"] == bot_config.sms.from_number
+        assert call_kwargs["to"] == bot_config.sms.to_number
 
     @patch("lifetime_bot.bot.create_driver")
     def test_bot_sends_both_notifications(

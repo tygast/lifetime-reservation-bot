@@ -3,26 +3,12 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal
 
 from dotenv import load_dotenv
 
 NotificationMethod = Literal["email", "sms", "both"]
-
-SMS_GATEWAYS: dict[str, str] = {
-    "att": "mms.att.net",
-    "tmobile": "tmomail.net",
-    "verizon": "vtext.com",
-    "sprint": "messaging.sprintpcs.com",
-    "boost": "sms.myboostmobile.com",
-    "cricket": "sms.cricketwireless.net",
-    "metro": "mymetropcs.com",
-    "uscellular": "email.uscc.net",
-    "virgin": "vmobl.com",
-    "xfinity": "vtext.com",
-    "googlefi": "msg.fi.google.com",
-}
 
 
 @dataclass
@@ -53,32 +39,28 @@ class EmailConfig:
 
 @dataclass
 class SMSConfig:
-    """SMS notification configuration."""
+    """SMS notification configuration using Twilio."""
 
-    number: str
-    carrier: str
-    gateways: dict[str, str] = field(default_factory=lambda: SMS_GATEWAYS.copy())
+    account_sid: str
+    auth_token: str
+    from_number: str
+    to_number: str
 
     @classmethod
     def from_env(cls) -> SMSConfig:
         """Create SMSConfig from environment variables."""
         return cls(
-            number=os.getenv("SMS_NUMBER", ""),
-            carrier=os.getenv("SMS_CARRIER", "").lower(),
+            account_sid=os.getenv("TWILIO_ACCOUNT_SID", ""),
+            auth_token=os.getenv("TWILIO_AUTH_TOKEN", ""),
+            from_number=os.getenv("TWILIO_FROM_NUMBER", ""),
+            to_number=os.getenv("SMS_NUMBER", ""),
         )
 
     def is_valid(self) -> bool:
         """Check if SMS configuration is valid."""
-        return bool(self.number and self.carrier and self.carrier in self.gateways)
-
-    def get_gateway_email(self) -> str:
-        """Get the email-to-SMS gateway address."""
-        if not self.is_valid():
-            raise ValueError(
-                f"Invalid SMS configuration. Carrier '{self.carrier}' not in supported carriers: "
-                f"{', '.join(self.gateways.keys())}"
-            )
-        return f"{self.number}@{self.gateways[self.carrier]}"
+        return bool(
+            self.account_sid and self.auth_token and self.from_number and self.to_number
+        )
 
 
 @dataclass
