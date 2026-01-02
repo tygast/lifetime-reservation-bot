@@ -7,175 +7,501 @@ An automated bot that helps you reserve classes at Life Time Fitness clubs. The 
 - Automatically logs into your Life Time Fitness account
 - Navigates to the class schedule for your preferred club
 - Finds and reserves your target class based on class name, instructor, and time
-- Handles waitlist scenarios
+- Handles waitlist scenarios automatically
+- Special handling for classes requiring waivers (e.g., Pickleball)
 - Sends notifications via email and/or SMS about reservation status
-- Can be scheduled to run at specific times (e.g., when registration opens)
+- Configurable retry logic (up to 3 attempts)
+- Can be scheduled to run at specific UTC times (e.g., when registration opens)
+- Runs automatically via GitHub Actions or locally
+
+## Project Structure
+
+```
+lifetime-reservation-bot/
+├── src/
+│   └── lifetime_bot/
+│       ├── __init__.py          # Package exports
+│       ├── __main__.py          # CLI entry point with retry logic
+│       ├── bot.py               # Main LifetimeReservationBot class
+│       ├── config.py            # Configuration dataclasses
+│       ├── notifications/
+│       │   ├── __init__.py
+│       │   ├── base.py          # Abstract notification service
+│       │   ├── email.py         # Email notification service
+│       │   └── sms.py           # SMS notification service (via email gateway)
+│       ├── utils/
+│       │   ├── __init__.py
+│       │   └── timing.py        # Timing and scheduling utilities
+│       └── webdriver/
+│           ├── __init__.py
+│           └── driver.py        # Selenium WebDriver setup
+├── archive/
+│   └── lifetime_bot.py          # Legacy monolithic version (deprecated)
+├── .github/
+│   └── workflows/
+│       └── bot.yml              # GitHub Actions workflow
+├── pyproject.toml               # Python project configuration
+├── .env.example                 # Environment variables template
+├── .gitignore                   # Git ignore rules
+└── README.md                    # This file
+```
 
 ## Requirements
 
-- Python 3.7+
-- Chrome browser
-- Selenium WebDriver
-- Gmail account (or other email provider) for sending notifications
+- Python 3.9 or higher
+- Chrome browser (for Selenium WebDriver)
+- Gmail account (or other SMTP provider) for sending notifications
 
 ## Installation
 
-1. Clone this repository:
-   ```
-   git clone https://github.com/yourusername/lifetime-bot.git
-   cd lifetime-bot
-   ```
+### Option 1: Using uv (Recommended)
 
-2. Create a virtual environment and activate it:
-   ```
-   python -m venv .venv
-   
-   # On Windows:
-   .venv\Scripts\activate
-   
-   # On macOS/Linux:
-   source .venv/bin/activate
-   ```
+[uv](https://github.com/astral-sh/uv) is a fast Python package installer.
 
-3. Install the required packages:
-   ```
-   pip install -r requirements.txt
-   ```
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/lifetime-reservation-bot.git
+cd lifetime-reservation-bot
 
-4. Create a `.env` file in the project directory with your configuration (see Configuration section below)
+# Install uv if you don't have it
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install the package
+uv pip install -e .
+```
+
+### Option 2: Using pip
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/lifetime-reservation-bot.git
+cd lifetime-reservation-bot
+
+# Create and activate a virtual environment
+python -m venv .venv
+
+# On Windows:
+.venv\Scripts\activate
+
+# On macOS/Linux:
+source .venv/bin/activate
+
+# Install the package in development mode
+pip install -e .
+```
+
+### Option 3: Using pip with dependencies only
+
+```bash
+# Install dependencies directly from pyproject.toml
+pip install python-dotenv selenium webdriver-manager
+```
 
 ## Configuration
 
-Create a `.env` file with the following variables:
+### Step 1: Create Environment File
+
+Copy the example environment file and fill in your values:
+
+```bash
+cp .env.example .env
+```
+
+### Step 2: Configure Environment Variables
+
+Edit the `.env` file with your settings:
 
 ```ini
-# Lifetime Credentials
-LIFETIME_USERNAME=your_lifetime_email
+# ===========================================
+# LIFETIME FITNESS CREDENTIALS
+# ===========================================
+LIFETIME_USERNAME=your_lifetime_email@example.com
 LIFETIME_PASSWORD=your_lifetime_password
-LIFETIME_CLUB_NAME=your_club_name
-LIFETIME_CLUB_STATE=your_club_state
 
-# Class Details
-TARGET_CLASS=your_class_name
-TARGET_INSTRUCTOR=your_instructor_name
-TARGET_DATE=YYYY-MM-DD
-START_TIME=your_start_time
-END_TIME=your_end_time
+# Your Life Time club name (without "Life Time - " prefix)
+# Find your club name at: https://my.lifetime.life/view-all-clubs.html
+# Examples:
+#   San Antonio 281
+#   Flower Mound
+#   Plano
+LIFETIME_CLUB_NAME=San Antonio 281
 
-# Notification Method
+# Two-letter state abbreviation in ALL CAPS
+# Examples: TX, CA, NY, FL, CO
+LIFETIME_CLUB_STATE=TX
+
+# ===========================================
+# TARGET CLASS CONFIGURATION
+# ===========================================
+# Find all these values on your club's class schedule page:
+#   https://my.lifetime.life/clubs/{state}/{club-name}/classes.html
+#
+# Example for San Antonio 281 (TX):
+#   https://my.lifetime.life/clubs/tx/san-antonio-281/classes.html
+#
+# Example for Flower Mound (TX):
+#   https://my.lifetime.life/clubs/tx/flower-mound/classes.html
+#
+# Note: The URL uses lowercase state and hyphenated club name
+
+# Class name - partial match is supported (see "How Class Matching Works" below)
+TARGET_CLASS=Pickleball
+
+# Instructor's name as shown (typically "FirstName L" format, no period after initial)
+TARGET_INSTRUCTOR=John D
+
+# Target date in YYYY-MM-DD format
+# Note: If RUN_ON_SCHEDULE=true, this is ignored and calculated as today + 8 days
+TARGET_DATE=2025-01-15
+
+# Class start and end times EXACTLY as shown on the schedule
+# Format is typically "H:MM AM" or "HH:MM AM"
+START_TIME=9:00 AM
+END_TIME=10:00 AM
+
+# ===========================================
+# NOTIFICATION SETTINGS
+# ===========================================
 # Options: "email", "sms", or "both"
 NOTIFICATION_METHOD=email
 
-# Email Configuration
+# ===========================================
+# EMAIL CONFIGURATION
+# Required for all notification methods (email uses SMTP, SMS uses email-to-SMS gateway)
+# ===========================================
 EMAIL_SENDER=your_email@gmail.com
-EMAIL_PASSWORD=your_app_specific_password
-EMAIL_RECEIVER=your_email@gmail.com
+EMAIL_PASSWORD=your_16_character_app_password
+EMAIL_RECEIVER=recipient@example.com
 SMTP_SERVER=smtp.gmail.com
 SMTP_PORT=587
 
-# SMS Configuration (for carrier gateway)
-SMS_NUMBER=1234567890  # Your phone number without any formatting
-SMS_CARRIER=verizon    # Your carrier from the supported list
+# ===========================================
+# SMS CONFIGURATION
+# Only required if NOTIFICATION_METHOD is "sms" or "both"
+# ===========================================
+# Your phone number (digits only, no dashes or spaces)
+SMS_NUMBER=1234567890
 
-# Bot Configuration
+# Your mobile carrier (see supported carriers below)
+SMS_CARRIER=att
+
+# ===========================================
+# BOT BEHAVIOR
+# ===========================================
+# Run browser without GUI (set to "false" for debugging)
 HEADLESS=true
-RUN_ON_SCHEDULE=true
+
+# If "true", calculates TARGET_DATE as today + 8 days
+# If "false", uses the TARGET_DATE value specified above
+RUN_ON_SCHEDULE=false
+
+# UTC time to wait for before running (HH:MM:SS format)
+# Only used when RUN_ON_SCHEDULE=true
+# Example: "16:00:00" = 4:00 PM UTC = 10:00 AM CST
+TARGET_UTC_TIME=16:00:00
 ```
 
-## Email Setup
+## Email Setup (Gmail)
 
-1. Use a Gmail account
-2. Enable 2-Step Verification in your Google Account
-3. Generate an App Password:
-   - Go to Google Account Settings → Security
-   - Under "2-Step Verification", scroll to "App passwords"
-   - Generate a new app password
-   - Use this password for EMAIL_PASSWORD in your `.env` file
+To send notifications via Gmail, you need to create an App Password:
+
+1. **Enable 2-Step Verification** (required for App Passwords):
+   - Go to [Google Account Security](https://myaccount.google.com/security)
+   - Click on "2-Step Verification"
+   - Follow the prompts to enable it
+
+2. **Generate an App Password**:
+   - Go to [Google App Passwords](https://myaccount.google.com/apppasswords)
+   - Select "Mail" as the app
+   - Select your device type
+   - Click "Generate"
+   - Copy the 16-character password (no spaces)
+
+3. **Use the App Password**:
+   - Set `EMAIL_PASSWORD` in your `.env` file to the 16-character App Password
+   - Do NOT use your regular Gmail password
 
 ## SMS Notification Setup
 
-The bot uses email-to-SMS gateways provided by mobile carriers to send text messages. No additional accounts or services are required beyond your existing email setup.
+The bot sends SMS messages using email-to-SMS gateways provided by mobile carriers. No additional accounts or services are required.
 
-### Supported SMS Carriers
+### Supported Carriers
 
-The following carriers are supported for SMS notifications:
+| Carrier Code | Carrier Name |
+|-------------|--------------|
+| `att` | AT&T |
+| `tmobile` | T-Mobile |
+| `verizon` | Verizon |
+| `sprint` | Sprint |
+| `boost` | Boost Mobile |
+| `cricket` | Cricket Wireless |
+| `metro` | Metro by T-Mobile |
+| `uscellular` | US Cellular |
+| `virgin` | Virgin Mobile |
+| `xfinity` | Xfinity Mobile |
+| `googlefi` | Google Fi |
 
-- `att` - AT&T
-- `tmobile` - T-Mobile
-- `verizon` - Verizon
-- `sprint` - Sprint
-- `boost` - Boost Mobile
-- `cricket` - Cricket Wireless
-- `metro` - Metro by T-Mobile
-- `uscellular` - US Cellular
-- `virgin` - Virgin Mobile
-- `xfinity` - Xfinity Mobile
-- `googlefi` - Google Fi
+### SMS Configuration
 
-To use SMS notifications:
-1. Set `NOTIFICATION_METHOD` to either `sms` or `both` in your `.env` file
-2. Set `SMS_NUMBER` to your phone number (digits only, no formatting)
-3. Set `SMS_CARRIER` to your carrier from the supported list
+1. Set `NOTIFICATION_METHOD` to `sms` or `both`
+2. Set `SMS_NUMBER` to your 10-digit phone number (no formatting)
+3. Set `SMS_CARRIER` to your carrier code from the table above
 
-## Scheduling
-The bot runs automatically via GitHub Actions:
-- Schedule: 10:00 UTC Sunday through Thursday (`0 10 * * 0-4`)
-- Can also be triggered manually through GitHub Actions interface
+## Usage
 
-### Running at a Specific UTC Time
+### Running Locally
 
-The bot includes functionality to wait until a specific UTC time before running. This is useful for ensuring the bot runs exactly when class registration opens.
+After installation and configuration:
 
-The default time is set to 16:00:00 UTC. You can modify this in the `lifetime_bot.py` file:
+```bash
+# Run the bot
+python -m lifetime_bot
 
-```python
-if __name__ == "__main__":
-    wait_until_utc("16:00:00")  # Change this to your desired UTC time
+# Or use the console script (if installed with pip install -e .)
+lifetime-bot
 ```
 
-## Local Development
+### Running with Specific Settings
 
-### Requirements
-- Python 3.9+
-- Chrome browser
-- Required packages: `selenium`, `python-dotenv`, `webdriver-manager`
+You can override environment variables at runtime:
 
-### Local Setup
-1. Clone the repository
-2. Create a `.env` file with the same variables as GitHub Secrets
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
+```bash
+# Run in non-headless mode (see browser actions)
+HEADLESS=false python -m lifetime_bot
+
+# Override target date
+TARGET_DATE=2025-02-01 python -m lifetime_bot
+
+# Run immediately without waiting for scheduled time
+RUN_ON_SCHEDULE=false python -m lifetime_bot
+```
+
+### What the Bot Does
+
+1. **Waits for target time** (if `RUN_ON_SCHEDULE=true`): Sleeps until `TARGET_UTC_TIME`
+2. **Logs into Life Time**: Uses Selenium to authenticate with your credentials
+3. **Navigates to schedule**: Opens the class schedule for your club and target date
+4. **Finds target class**: Searches for the class matching your criteria (name, instructor, time)
+5. **Reserves the class**: Clicks the Reserve button (or Add to Waitlist if full)
+6. **Handles waivers**: For classes like Pickleball, accepts the waiver automatically
+7. **Sends notification**: Emails/texts you the result (success, failure, or already reserved)
+8. **Retries on failure**: Attempts up to 3 times with 30-second delays between retries
+
+## GitHub Actions (Automated Scheduling)
+
+The bot can run automatically using GitHub Actions.
+
+### Workflow Schedule
+
+The default schedule in `.github/workflows/bot.yml`:
+- **When**: 15:30 UTC (9:30 AM CST) Sunday through Thursday
+- **Cron**: `30 15 * * 0-4`
+
+This timing is designed to reserve classes 8 days in advance when registration opens.
+
+### Setting Up GitHub Actions
+
+1. **Fork or push this repository to GitHub**
+
+2. **Add Repository Secrets** (Settings → Secrets and variables → Actions → Secrets):
+
+   | Secret Name | Description |
+   |-------------|-------------|
+   | `EMAIL_SENDER` | Your Gmail address |
+   | `EMAIL_PASSWORD` | Your Gmail App Password |
+   | `EMAIL_RECEIVER` | Email to receive notifications |
+   | `SMTP_SERVER` | SMTP server (default: smtp.gmail.com) |
+   | `SMTP_PORT` | SMTP port (default: 587) |
+   | `LIFETIME_USERNAME` | Your Life Time email |
+   | `LIFETIME_PASSWORD` | Your Life Time password |
+   | `SMS_NUMBER` | Your phone number (optional) |
+
+3. **Add Repository Variables** (Settings → Secrets and variables → Actions → Variables):
+
+   | Variable Name | Description |
+   |---------------|-------------|
+   | `LIFETIME_CLUB_NAME` | Your club name |
+   | `LIFETIME_CLUB_STATE` | Two-letter state code |
+   | `TARGET_CLASS` | Class name |
+   | `TARGET_INSTRUCTOR` | Instructor name |
+   | `TARGET_DATE` | Target date (if not using schedule) |
+   | `START_TIME` | Class start time |
+   | `END_TIME` | Class end time |
+   | `HEADLESS` | `true` (always for CI) |
+   | `RUN_ON_SCHEDULE` | `true` for automatic date calculation |
+   | `NOTIFICATION_METHOD` | `email`, `sms`, or `both` |
+   | `SMS_CARRIER` | Your carrier code (optional) |
+
+4. **Create Environments** (Settings → Environments):
+   - Create `dev` environment for testing
+   - Create `prod` environment for scheduled runs
+   - Each environment can have different variable values
+
+### Manual Trigger
+
+You can manually run the workflow:
+1. Go to Actions → Lifetime Bot Automation
+2. Click "Run workflow"
+3. Select the environment (`dev` or `prod`)
+4. Click "Run workflow"
+
+## How Class Matching Works
+
+The bot matches classes using these criteria (ALL must match):
+
+1. **Class Name**: The `TARGET_CLASS` must be **contained** in the class title (case-insensitive)
+2. **Instructor**: The `TARGET_INSTRUCTOR` must be **contained** in the class info (case-insensitive)
+3. **Start Time**: Must exactly match `START_TIME` (e.g., "9:00 AM")
+4. **End Time**: Must exactly match `END_TIME` (e.g., "10:00 AM")
+
+### Partial Class Name Matching
+
+`TARGET_CLASS` does **not** need to be the full class title. The bot checks if your value is contained within the actual class name. This allows flexibility:
+
+| TARGET_CLASS | Matches |
+|--------------|---------|
+| `Pickleball` | "Pickleball Open Play", "Pickleball Skills & Drills" |
+| `ALPHA CONDITIONING` | "ALPHA CONDITIONING: HINGE + PRESS", "ALPHA CONDITIONING: SQUAT + LUNGE" |
+| `ALPHA STRENGTH` | "ALPHA STRENGTH: HINGE + PRESS", "ALPHA STRENGTH: SQUAT + LUNGE" |
+| `GTX` | "GTX: HINGE + PRESS", "GTX: SQUAT + LUNGE" |
+| `Yoga` | "Yoga Flow", "Power Yoga", "Yoga Sculpt" |
+
+**Important**: Be specific enough to avoid matching the wrong class. For example:
+- `ALPHA` alone would match both "ALPHA CONDITIONING" and "ALPHA STRENGTH" classes
+- `ALPHA CONDITIONING` specifically targets only conditioning classes
+
+### Finding Your Club Name
+
+1. Go to the [Life Time Club Directory](https://my.lifetime.life/view-all-clubs.html)
+2. Find your club in the list
+3. Set `LIFETIME_CLUB_NAME` to the club name WITHOUT the "Life Time - " prefix (e.g., `San Antonio 281`)
+4. Set `LIFETIME_CLUB_STATE` to the two-letter state code in ALL CAPS (e.g., `TX`)
+
+### Finding Class Details
+
+1. Go to your club's class schedule page:
    ```
-4. Run locally:
-   ```bash
-   python lifetime_bot.py
+   https://my.lifetime.life/clubs/{state}/{club-name}/classes.html
    ```
+   - `{state}` = lowercase state abbreviation (e.g., `tx`, `ca`, `ny`)
+   - `{club-name}` = club name in lowercase with hyphens (e.g., `san-antonio-281`, `flower-mound`)
+
+2. Example URLs:
+   - San Antonio 281: `https://my.lifetime.life/clubs/tx/san-antonio-281/classes.html`
+   - Flower Mound: `https://my.lifetime.life/clubs/tx/flower-mound/classes.html`
+   - Plano: `https://my.lifetime.life/clubs/tx/plano/classes.html`
+
+3. Find your target class on the schedule and note:
+   - **Class name** exactly as shown (e.g., "Pickleball", "Yoga Flow", "HIIT")
+   - **Instructor name** without the period after the initial (e.g., "John D" not "John D.")
+   - **Start time** exactly as shown (e.g., "9:00 AM", "10:30 AM")
+   - **End time** exactly as shown (e.g., "10:00 AM", "11:30 AM")
+
+## Notification Messages
+
+The bot sends different notifications based on the outcome:
+
+| Subject | When |
+|---------|------|
+| `Lifetime Bot - Success` | Class successfully reserved |
+| `Lifetime Bot - Already Reserved` | Class was already reserved or on waitlist |
+| `Lifetime Bot - Failure` | Failed to reserve (includes error details) |
+| `Lifetime Bot - All Attempts Failed` | Failed after 3 retry attempts |
+
+Each notification includes:
+- Class name
+- Instructor
+- Date
+- Time
+- Error message (if applicable)
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Login Failures**: Ensure your Life Time Fitness credentials are correct in the `.env` file.
+**Login Failures**
+- Verify your Life Time credentials are correct
+- Check if your account requires captcha or 2FA
+- Try logging in manually on the website first
 
-2. **Class Not Found**: Verify the class name, instructor, and time match exactly what's shown on the Life Time website.
+**Class Not Found**
+- Verify the class name, instructor, and time match EXACTLY
+- Check that the class exists on the target date
+- Ensure `LIFETIME_CLUB_NAME` and `LIFETIME_CLUB_STATE` are correct
 
-3. **Email Notification Failures**: 
-   - For Gmail, you need to use an App Password instead of your regular password
-   - Enable "Less secure app access" or use 2FA with app passwords
+**Email Notification Failures**
+- Use a Gmail App Password, not your regular password
+- Verify `EMAIL_SENDER` and `EMAIL_RECEIVER` are valid emails
+- Check that 2-Step Verification is enabled on your Google account
 
-4. **SMS Notification Failures**:
-   - Verify your phone number is entered correctly without any formatting
-   - Ensure you've selected the correct carrier
+**SMS Notification Failures**
+- Verify your phone number has no formatting (just 10 digits)
+- Ensure you selected the correct carrier
+- Some carriers may have delays or block automated messages
 
-- Check GitHub Actions logs for execution details
-- Email/SMS notifications will be sent for both successful and failed reservations
-- For local testing, set `HEADLESS=false` to watch the automation in action
+**WebDriver Errors**
+- Ensure Chrome is installed on your system
+- The `webdriver-manager` package handles ChromeDriver automatically
+- Try running with `HEADLESS=false` to see what's happening
 
-## Security Note
-- Never commit your `.env` file
-- Always use GitHub Secrets for sensitive information
-- Regularly rotate your email app password
+### Debugging Tips
+
+1. **Run with visible browser**:
+   ```bash
+   HEADLESS=false python -m lifetime_bot
+   ```
+
+2. **Check GitHub Actions logs**:
+   - Go to Actions → Select workflow run → Click on job → View logs
+
+3. **Test notifications separately**:
+   ```python
+   from lifetime_bot.config import BotConfig, EmailConfig
+   from lifetime_bot.notifications import EmailNotificationService
+
+   config = EmailConfig.from_env()
+   service = EmailNotificationService(config)
+   service.send("Test Subject", "Test message body")
+   ```
+
+## Development
+
+### Installing Development Dependencies
+
+```bash
+pip install -e ".[dev]"
+```
+
+This installs:
+- `ruff` - Linting and formatting
+- `pytest` - Testing
+- `pytest-cov` - Test coverage
+
+### Running the Linter
+
+```bash
+python -m ruff check src/
+python -m ruff format src/
+```
+
+### Project Architecture
+
+The codebase follows a modular architecture:
+
+- **`config.py`**: Dataclasses for configuration (`BotConfig`, `EmailConfig`, `SMSConfig`, `ClassConfig`, `ClubConfig`)
+- **`bot.py`**: Main `LifetimeReservationBot` class with all reservation logic
+- **`notifications/`**: Abstract `NotificationService` with email and SMS implementations
+- **`webdriver/`**: Selenium WebDriver factory function
+- **`utils/timing.py`**: UTC time waiting and date calculation utilities
+- **`__main__.py`**: CLI entry point with retry logic
+
+## Security Notes
+
+- **Never commit your `.env` file** - It contains sensitive credentials
+- **Use GitHub Secrets** for CI/CD - Never put passwords in workflow files
+- **Rotate credentials regularly** - Especially email App Passwords
+- **Review the code** - Understand what automation you're running on your accounts
 
 ## License
+
 MIT License

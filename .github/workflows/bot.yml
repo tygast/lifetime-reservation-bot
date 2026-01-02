@@ -23,17 +23,21 @@ jobs:
         run: echo "Deploying in ${{ github.event_name == 'schedule' && 'prod' || inputs.env }}"
 
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v3
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.11'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
 
       - name: Install Dependencies
         run: |
-          pip install -r requirements.txt
-          pip install selenium webdriver-manager
+          uv pip install --system -e .
 
       - name: Create .env File
         run: |
@@ -58,7 +62,7 @@ jobs:
           echo "SMS_NUMBER=${{ secrets.SMS_NUMBER }}" >> .env
 
       - name: Run Lifetime Bot
-        run: python lifetime_bot.py
+        run: python -m lifetime_bot
         env:
           EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
