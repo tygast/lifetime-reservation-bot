@@ -28,7 +28,7 @@ lifetime-reservation-bot/
 │       │   ├── __init__.py
 │       │   ├── base.py          # Abstract notification service
 │       │   ├── email.py         # Email notification service
-│       │   └── sms.py           # SMS notification service (via email gateway)
+│       │   └── sms.py           # SMS notification service (via Twilio)
 │       ├── utils/
 │       │   ├── __init__.py
 │       │   └── timing.py        # Timing and scheduling utilities
@@ -118,7 +118,7 @@ Edit the `.env` file with your settings:
 LIFETIME_USERNAME=your_lifetime_email@example.com
 LIFETIME_PASSWORD=your_lifetime_password
 
-# Your Life Time club name (without "Life Time - " prefix)
+# Your Life Time club name
 # Find your club name at: https://my.lifetime.life/view-all-clubs.html
 # Examples:
 #   San Antonio 281
@@ -167,7 +167,7 @@ NOTIFICATION_METHOD=email
 
 # ===========================================
 # EMAIL CONFIGURATION
-# Required for all notification methods (email uses SMTP, SMS uses email-to-SMS gateway)
+# Required for email notifications
 # ===========================================
 EMAIL_SENDER=your_email@gmail.com
 EMAIL_PASSWORD=your_16_character_app_password
@@ -176,14 +176,21 @@ SMTP_SERVER=smtp.gmail.com
 SMTP_PORT=587
 
 # ===========================================
-# SMS CONFIGURATION
+# SMS CONFIGURATION (Optional - requires Twilio account)
 # Only required if NOTIFICATION_METHOD is "sms" or "both"
 # ===========================================
-# Your phone number (digits only, no dashes or spaces)
-SMS_NUMBER=1234567890
+# Sign up at: https://www.twilio.com/try-twilio
+# Requires A2P 10DLC registration for US numbers
 
-# Your mobile carrier (see supported carriers below)
-SMS_CARRIER=att
+# Your Twilio credentials (from https://console.twilio.com)
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN=your_auth_token_here
+
+# Your Twilio phone number (format: +1XXXXXXXXXX)
+TWILIO_FROM_NUMBER=+15551234567
+
+# Your personal phone number to receive SMS (format: +1XXXXXXXXXX)
+SMS_NUMBER=+15559876543
 
 # ===========================================
 # BOT BEHAVIOR
@@ -221,31 +228,39 @@ To send notifications via Gmail, you need to create an App Password:
    - Set `EMAIL_PASSWORD` in your `.env` file to the 16-character App Password
    - Do NOT use your regular Gmail password
 
-## SMS Notification Setup
+## SMS Notification Setup (Optional)
 
-The bot sends SMS messages using email-to-SMS gateways provided by mobile carriers. No additional accounts or services are required.
+SMS notifications require a [Twilio](https://www.twilio.com) account. If you don't want to set up Twilio, simply use `NOTIFICATION_METHOD=email` and skip this section.
 
-### Supported Carriers
+### Twilio Setup
 
-| Carrier Code | Carrier Name |
-|-------------|--------------|
-| `att` | AT&T |
-| `tmobile` | T-Mobile |
-| `verizon` | Verizon |
-| `sprint` | Sprint |
-| `boost` | Boost Mobile |
-| `cricket` | Cricket Wireless |
-| `metro` | Metro by T-Mobile |
-| `uscellular` | US Cellular |
-| `virgin` | Virgin Mobile |
-| `xfinity` | Xfinity Mobile |
-| `googlefi` | Google Fi |
+1. **Create a Twilio account** at https://www.twilio.com/try-twilio
 
-### SMS Configuration
+2. **Complete A2P 10DLC registration** (required for US numbers):
+   - Go to **Messaging** → **Senders** → **Brands** → Register as Sole Proprietor
+   - Create a Campaign and associate your phone number
+   - Note: Registration may take a few days for approval
 
-1. Set `NOTIFICATION_METHOD` to `sms` or `both`
-2. Set `SMS_NUMBER` to your 10-digit phone number (no formatting)
-3. Set `SMS_CARRIER` to your carrier code from the table above
+3. **Get your credentials** from https://console.twilio.com:
+   - Account SID (starts with `AC`)
+   - Auth Token
+   - Purchase a local phone number with SMS capability
+
+4. **Configure environment variables**:
+   ```ini
+   NOTIFICATION_METHOD=sms  # or "both" for email + SMS
+   TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+   TWILIO_AUTH_TOKEN=your_auth_token_here
+   TWILIO_FROM_NUMBER=+15551234567
+   SMS_NUMBER=+15559876543
+   ```
+
+### Twilio Costs
+
+- ~$1.15/month for a local phone number
+- ~$0.0079 per SMS message
+- ~$4 one-time brand registration fee
+- A2P campaign fees may apply
 
 ## Usage
 
@@ -314,7 +329,10 @@ This timing is designed to reserve classes 8 days in advance when registration o
    | `SMTP_PORT` | SMTP port (default: 587) |
    | `LIFETIME_USERNAME` | Your Life Time email |
    | `LIFETIME_PASSWORD` | Your Life Time password |
-   | `SMS_NUMBER` | Your phone number (optional) |
+   | `TWILIO_ACCOUNT_SID` | Twilio Account SID (optional, for SMS) |
+   | `TWILIO_AUTH_TOKEN` | Twilio Auth Token (optional, for SMS) |
+   | `TWILIO_FROM_NUMBER` | Twilio phone number (optional, for SMS) |
+   | `SMS_NUMBER` | Your phone number (optional, for SMS) |
 
 3. **Add Repository Variables** (Settings → Secrets and variables → Actions → Variables):
 
@@ -330,7 +348,6 @@ This timing is designed to reserve classes 8 days in advance when registration o
    | `HEADLESS` | `true` (always for CI) |
    | `RUN_ON_SCHEDULE` | `true` for automatic date calculation |
    | `NOTIFICATION_METHOD` | `email`, `sms`, or `both` |
-   | `SMS_CARRIER` | Your carrier code (optional) |
 
 4. **Create Environments** (Settings → Environments):
    - Create `dev` environment for testing
@@ -374,7 +391,7 @@ The bot matches classes using these criteria (ALL must match):
 
 1. Go to the [Life Time Club Directory](https://my.lifetime.life/view-all-clubs.html)
 2. Find your club in the list
-3. Set `LIFETIME_CLUB_NAME` to the club name WITHOUT the "Life Time - " prefix (e.g., `San Antonio 281`)
+3. Set `LIFETIME_CLUB_NAME` to the club name (e.g., `San Antonio 281`)
 4. Set `LIFETIME_CLUB_STATE` to the two-letter state code in ALL CAPS (e.g., `TX`)
 
 ### Finding Class Details
@@ -435,9 +452,10 @@ Each notification includes:
 - Check that 2-Step Verification is enabled on your Google account
 
 **SMS Notification Failures**
-- Verify your phone number has no formatting (just 10 digits)
-- Ensure you selected the correct carrier
-- Some carriers may have delays or block automated messages
+- Verify your Twilio credentials are correct
+- Ensure A2P 10DLC registration is complete and approved
+- Check Twilio console logs for error codes
+- Verify phone numbers use E.164 format (+1XXXXXXXXXX)
 
 **WebDriver Errors**
 - Ensure Chrome is installed on your system

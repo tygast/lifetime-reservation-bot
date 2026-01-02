@@ -32,8 +32,10 @@ def email_config() -> EmailConfig:
 def sms_config() -> SMSConfig:
     """Create a test SMS configuration."""
     return SMSConfig(
-        number="1234567890",
-        carrier="att",
+        account_sid="ACtest123456789",
+        auth_token="test_auth_token",
+        from_number="+15551234567",
+        to_number="+15559876543",
     )
 
 
@@ -97,8 +99,10 @@ def env_vars() -> dict[str, str]:
         "EMAIL_RECEIVER": "receiver@gmail.com",
         "SMTP_SERVER": "smtp.gmail.com",
         "SMTP_PORT": "587",
-        "SMS_NUMBER": "1234567890",
-        "SMS_CARRIER": "att",
+        "TWILIO_ACCOUNT_SID": "ACtest123456789",
+        "TWILIO_AUTH_TOKEN": "test_auth_token",
+        "TWILIO_FROM_NUMBER": "+15551234567",
+        "SMS_NUMBER": "+15559876543",
         "NOTIFICATION_METHOD": "email",
         "RUN_ON_SCHEDULE": "false",
         "HEADLESS": "true",

@@ -8,7 +8,6 @@ from unittest.mock import patch
 import pytest
 
 from lifetime_bot.config import (
-    SMS_GATEWAYS,
     BotConfig,
     ClassConfig,
     ClubConfig,
@@ -84,57 +83,71 @@ class TestSMSConfig:
 
     def test_init(self, sms_config: SMSConfig) -> None:
         """Test SMSConfig initialization."""
-        assert sms_config.number == "1234567890"
-        assert sms_config.carrier == "att"
-        assert sms_config.gateways == SMS_GATEWAYS
+        assert sms_config.account_sid == "ACtest123456789"
+        assert sms_config.auth_token == "test_auth_token"
+        assert sms_config.from_number == "+15551234567"
+        assert sms_config.to_number == "+15559876543"
 
     def test_from_env(self, mock_env: dict[str, str]) -> None:
         """Test creating SMSConfig from environment variables."""
         config = SMSConfig.from_env()
-        assert config.number == "1234567890"
-        assert config.carrier == "att"
+        assert config.account_sid == "ACtest123456789"
+        assert config.auth_token == "test_auth_token"
+        assert config.from_number == "+15551234567"
+        assert config.to_number == "+15559876543"
 
     def test_from_env_defaults(self) -> None:
         """Test SMSConfig defaults when env vars are missing."""
         with patch.dict(os.environ, {}, clear=True):
             config = SMSConfig.from_env()
-            assert config.number == ""
-            assert config.carrier == ""
+            assert config.account_sid == ""
+            assert config.auth_token == ""
+            assert config.from_number == ""
+            assert config.to_number == ""
 
     def test_is_valid_true(self, sms_config: SMSConfig) -> None:
         """Test is_valid returns True for valid config."""
         assert sms_config.is_valid() is True
 
-    def test_is_valid_false_missing_number(self) -> None:
-        """Test is_valid returns False when number is missing."""
-        config = SMSConfig(number="", carrier="att")
+    def test_is_valid_false_missing_account_sid(self) -> None:
+        """Test is_valid returns False when account_sid is missing."""
+        config = SMSConfig(
+            account_sid="",
+            auth_token="token",
+            from_number="+15551234567",
+            to_number="+15559876543",
+        )
         assert config.is_valid() is False
 
-    def test_is_valid_false_missing_carrier(self) -> None:
-        """Test is_valid returns False when carrier is missing."""
-        config = SMSConfig(number="1234567890", carrier="")
+    def test_is_valid_false_missing_auth_token(self) -> None:
+        """Test is_valid returns False when auth_token is missing."""
+        config = SMSConfig(
+            account_sid="ACtest123",
+            auth_token="",
+            from_number="+15551234567",
+            to_number="+15559876543",
+        )
         assert config.is_valid() is False
 
-    def test_is_valid_false_invalid_carrier(self) -> None:
-        """Test is_valid returns False for invalid carrier."""
-        config = SMSConfig(number="1234567890", carrier="invalid_carrier")
+    def test_is_valid_false_missing_from_number(self) -> None:
+        """Test is_valid returns False when from_number is missing."""
+        config = SMSConfig(
+            account_sid="ACtest123",
+            auth_token="token",
+            from_number="",
+            to_number="+15559876543",
+        )
         assert config.is_valid() is False
 
-    def test_get_gateway_email(self, sms_config: SMSConfig) -> None:
-        """Test get_gateway_email returns correct email."""
-        assert sms_config.get_gateway_email() == "1234567890@mms.att.net"
-
-    def test_get_gateway_email_all_carriers(self) -> None:
-        """Test get_gateway_email for all supported carriers."""
-        for carrier, gateway in SMS_GATEWAYS.items():
-            config = SMSConfig(number="5551234567", carrier=carrier)
-            assert config.get_gateway_email() == f"5551234567@{gateway}"
-
-    def test_get_gateway_email_invalid_carrier(self) -> None:
-        """Test get_gateway_email raises error for invalid carrier."""
-        config = SMSConfig(number="1234567890", carrier="invalid")
-        with pytest.raises(ValueError, match="Invalid SMS configuration"):
-            config.get_gateway_email()
+    def test_is_valid_false_missing_to_number(self) -> None:
+        """Test is_valid returns False when to_number is missing."""
+        config = SMSConfig(
+            account_sid="ACtest123",
+            auth_token="token",
+            from_number="+15551234567",
+            to_number="",
+        )
+        assert config.is_valid() is False
 
 
 class TestClassConfig:

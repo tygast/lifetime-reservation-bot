@@ -25,6 +25,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "selenium>=4.0.0",
     "webdriver-manager>=4.0.0",
+    "twilio>=8.0.0",
 ]
 
 [project.optional-dependencies]

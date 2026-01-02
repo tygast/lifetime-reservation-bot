@@ -38,7 +38,7 @@ class LifetimeReservationBot:
     def _setup_notifications(self) -> None:
         """Initialize notification services."""
         self.email_service = EmailNotificationService(self.config.email)
-        self.sms_service = SMSNotificationService(self.config.sms, self.config.email)
+        self.sms_service = SMSNotificationService(self.config.sms)
 
     def _setup_webdriver(self) -> None:
         """Initialize the WebDriver."""
