@@ -4,7 +4,7 @@ on:
   schedule:
     # For testing, set schedule to desired UTC time using 'MM HH * * *' format (e.g., '40 23 * * *')
     # Revert to '30 14 * * 0-4' before merging to main
-    - cron: '30 14 * * 0-4'  # Runs 30+ min before 10 AM Central (handles DST)
+    - cron: '40 23 * * *'  # Runs 30+ min before 10 AM Central (handles DST)
   workflow_dispatch:  # Allows manual trigger
     inputs:
         env:
