@@ -7,7 +7,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from lifetime_bot.utils.timing import get_target_date, is_valid_day, wait_until_utc
+from lifetime_bot.utils.timing import (
+    get_target_date,
+    get_target_utc_time,
+    is_valid_day,
+    wait_until_utc,
+)
 
 
 class TestGetTargetDate:
@@ -58,6 +63,61 @@ class TestGetTargetDate:
         result = get_target_date(run_on_schedule=False, target_date="")
 
         assert result == "2026-01-15"
+
+
+class TestGetTargetUtcTime:
+    """Tests for get_target_utc_time function."""
+
+    @patch("lifetime_bot.utils.timing.datetime")
+    def test_cst_to_utc_standard_time(self, mock_datetime: MagicMock) -> None:
+        """Test conversion from CST (standard time) to UTC.
+
+        CST is UTC-6, so 10:00 AM CST = 16:00 UTC.
+        """
+        # January is standard time (CST, UTC-6)
+        mock_now = datetime.datetime(2026, 1, 15, 10, 0, 0)
+        mock_datetime.datetime.now.return_value = mock_now
+        mock_datetime.datetime.strptime = datetime.datetime.strptime
+        mock_datetime.datetime.combine = datetime.datetime.combine
+        mock_datetime.timezone = datetime.timezone
+
+        result = get_target_utc_time("10:00:00", "America/Chicago")
+
+        assert result == "16:00:00"
+
+    @patch("lifetime_bot.utils.timing.datetime")
+    def test_cdt_to_utc_daylight_time(self, mock_datetime: MagicMock) -> None:
+        """Test conversion from CDT (daylight time) to UTC.
+
+        CDT is UTC-5, so 10:00 AM CDT = 15:00 UTC.
+        """
+        # July is daylight saving time (CDT, UTC-5)
+        mock_now = datetime.datetime(2026, 7, 15, 10, 0, 0)
+        mock_datetime.datetime.now.return_value = mock_now
+        mock_datetime.datetime.strptime = datetime.datetime.strptime
+        mock_datetime.datetime.combine = datetime.datetime.combine
+        mock_datetime.timezone = datetime.timezone
+
+        result = get_target_utc_time("10:00:00", "America/Chicago")
+
+        assert result == "15:00:00"
+
+    @patch("lifetime_bot.utils.timing.datetime")
+    def test_different_timezone(self, mock_datetime: MagicMock) -> None:
+        """Test conversion from different timezone (PST) to UTC.
+
+        PST is UTC-8, so 10:00 AM PST = 18:00 UTC.
+        """
+        # January is standard time
+        mock_now = datetime.datetime(2026, 1, 15, 10, 0, 0)
+        mock_datetime.datetime.now.return_value = mock_now
+        mock_datetime.datetime.strptime = datetime.datetime.strptime
+        mock_datetime.datetime.combine = datetime.datetime.combine
+        mock_datetime.timezone = datetime.timezone
+
+        result = get_target_utc_time("10:00:00", "America/Los_Angeles")
+
+        assert result == "18:00:00"
 
 
 class TestIsValidDay:

@@ -5,6 +5,27 @@ from __future__ import annotations
 import datetime
 import time
 from typing import Callable
+from zoneinfo import ZoneInfo
+
+
+def get_target_utc_time(local_time: str, timezone: str) -> str:
+    """Convert a local time to UTC, automatically handling DST.
+
+    Args:
+        local_time: Local time in HH:MM:SS format (e.g., "10:00:00").
+        timezone: IANA timezone name (e.g., "America/Chicago").
+
+    Returns:
+        UTC time in HH:MM:SS format.
+    """
+    tz = ZoneInfo(timezone)
+    now = datetime.datetime.now(tz)
+    local_dt = datetime.datetime.combine(
+        now.date(),
+        datetime.datetime.strptime(local_time, "%H:%M:%S").time(),
+    ).replace(tzinfo=tz)
+    utc_dt = local_dt.astimezone(datetime.timezone.utc)
+    return utc_dt.strftime("%H:%M:%S")
 
 
 def get_target_date(run_on_schedule: bool, target_date: str | None = None) -> str:

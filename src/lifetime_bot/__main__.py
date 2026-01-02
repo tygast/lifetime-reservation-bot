@@ -7,7 +7,7 @@ import sys
 import time
 
 from lifetime_bot.bot import LifetimeReservationBot
-from lifetime_bot.utils.timing import wait_until_utc
+from lifetime_bot.utils.timing import get_target_utc_time, wait_until_utc
 
 
 def run_bot() -> bool:
@@ -66,7 +66,11 @@ def main() -> int:
         success = run_bot()
         return 0 if success else 1
 
-    target_time = os.getenv("TARGET_UTC_TIME", "16:00:00")
+    local_time = os.getenv("TARGET_LOCAL_TIME", "10:00:00")
+    timezone = os.getenv("TIMEZONE", "America/Chicago")
+    target_time = get_target_utc_time(local_time, timezone)
+    print(f"Target time: {local_time} {timezone} -> {target_time} UTC")
+
     wait_until_utc(target_time, run_bot)
     return 0
 
