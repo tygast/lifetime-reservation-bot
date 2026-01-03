@@ -11,7 +11,7 @@ An automated bot that helps you reserve classes at Life Time Fitness clubs. The 
 - Special handling for classes requiring waivers (e.g., Pickleball)
 - Sends notifications via email and/or SMS about reservation status
 - Configurable retry logic (up to 3 attempts)
-- Can be scheduled to run at specific UTC times (e.g., when registration opens)
+- Can be scheduled to run at specific local times with automatic DST handling
 - Runs automatically via GitHub Actions or locally
 
 ## Project Structure
@@ -39,7 +39,8 @@ lifetime-reservation-bot/
 │   └── lifetime_bot.py          # Legacy monolithic version (deprecated)
 ├── .github/
 │   └── workflows/
-│       └── bot.yml              # GitHub Actions workflow
+│       ├── bot.yml              # GitHub Actions workflow
+│       └── keepalive.yml        # Prevents workflow disabling after 60 days
 ├── pyproject.toml               # Python project configuration
 ├── .env.example                 # Environment variables template
 ├── .gitignore                   # Git ignore rules
@@ -202,10 +203,10 @@ HEADLESS=true
 # If "false", uses the TARGET_DATE value specified above
 RUN_ON_SCHEDULE=false
 
-# UTC time to wait for before running (HH:MM:SS format)
-# Only used when RUN_ON_SCHEDULE=true
-# Example: "16:00:00" = 4:00 PM UTC = 10:00 AM CST
-TARGET_UTC_TIME=16:00:00
+# Target time configuration (only used when RUN_ON_SCHEDULE=true)
+# Use local time + timezone - DST is handled automatically
+TARGET_LOCAL_TIME=10:00:00
+TIMEZONE=America/Chicago
 ```
 
 ## Email Setup (Gmail)
@@ -293,7 +294,7 @@ RUN_ON_SCHEDULE=false python -m lifetime_bot
 
 ### What the Bot Does
 
-1. **Waits for target time** (if `RUN_ON_SCHEDULE=true`): Sleeps until `TARGET_UTC_TIME`
+1. **Waits for target time** (if `RUN_ON_SCHEDULE=true`): Converts `TARGET_LOCAL_TIME` to UTC (handling DST automatically) and sleeps until that time
 2. **Logs into Life Time**: Uses Selenium to authenticate with your credentials
 3. **Navigates to schedule**: Opens the class schedule for your club and target date
 4. **Finds target class**: Searches for the class matching your criteria (name, instructor, time)
@@ -348,6 +349,8 @@ This timing is designed to reserve classes 8 days in advance when registration o
    | `HEADLESS` | `true` (always for CI) |
    | `RUN_ON_SCHEDULE` | `true` for automatic date calculation |
    | `NOTIFICATION_METHOD` | `email`, `sms`, or `both` |
+   | `TARGET_LOCAL_TIME` | Local time to run (e.g., `10:00:00`) |
+   | `TIMEZONE` | IANA timezone (e.g., `America/Chicago`) |
 
 4. **Create Environments** (Settings → Environments):
    - Create `dev` environment for testing

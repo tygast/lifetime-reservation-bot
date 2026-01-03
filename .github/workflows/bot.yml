@@ -2,7 +2,7 @@ name: Lifetime Bot Automation
 
 on:
   schedule:
-    - cron: '30 15 * * 0-4'  # Runs at 9:30 AM CST from Sunday to Thursday
+    - cron: '30 14 * * 0-4'  # Runs 30+ min before 10 AM Central (handles DST)
   workflow_dispatch:  # Allows manual trigger
     inputs:
         env:
@@ -58,6 +58,8 @@ jobs:
           echo "START_TIME=${{ vars.START_TIME }}" >> .env
           echo "END_TIME=${{ vars.END_TIME }}" >> .env
           echo "NOTIFICATION_METHOD=${{ vars.NOTIFICATION_METHOD }}" >> .env
+          echo "TARGET_LOCAL_TIME=${{ vars.TARGET_LOCAL_TIME }}" >> .env
+          echo "TIMEZONE=${{ vars.TIMEZONE }}" >> .env
           echo "TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }}" >> .env
           echo "TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }}" >> .env
           echo "TWILIO_FROM_NUMBER=${{ secrets.TWILIO_FROM_NUMBER }}" >> .env
@@ -83,6 +85,8 @@ jobs:
           START_TIME: ${{ vars.START_TIME }}
           END_TIME: ${{ vars.END_TIME }}
           NOTIFICATION_METHOD: ${{ vars.NOTIFICATION_METHOD }}
+          TARGET_LOCAL_TIME: ${{ vars.TARGET_LOCAL_TIME }}
+          TIMEZONE: ${{ vars.TIMEZONE }}
           TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
           TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
           TWILIO_FROM_NUMBER: ${{ secrets.TWILIO_FROM_NUMBER }}
