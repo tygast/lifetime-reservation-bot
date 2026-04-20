@@ -310,10 +310,10 @@ The bot can run automatically using GitHub Actions.
 ### Workflow Schedule
 
 The default schedule in `.github/workflows/bot.yml`:
-- **When**: 15:30 UTC (9:30 AM CST) Sunday through Thursday
-- **Cron**: `30 15 * * 0-4`
+- **When**: 7:17 AM CT, Sunday through Thursday (DST-aware)
+- **Cron**: `17 12 * * 0-4` during CDT (12:17 UTC) and `17 13 * * 0-4` during CST (13:17 UTC); a check-schedule step skips the wrong one based on the current TZ.
 
-This timing is designed to reserve classes 8 days in advance when registration opens.
+The runner starts early to absorb GitHub Actions scheduling delays (which regularly exceed an hour during weekday business hours); the bot then sleeps internally until `TARGET_LOCAL_TIME` (10:00 CT by default) before attempting the reservation 8 days in advance.
 
 ### Setting Up GitHub Actions
 

@@ -2,8 +2,8 @@ name: Lifetime Bot Automation
 
 on:
   schedule:
-    - cron: '50 13 * * 0-4'  # 8:50 AM CDT (summer, UTC-5)
-    - cron: '50 14 * * 0-4'  # 8:50 AM CST (winter, UTC-6)
+    - cron: '17 12 * * 0-4'  # 7:17 AM CDT (summer, UTC-5) — 2h43m buffer before 10 AM CT target
+    - cron: '17 13 * * 0-4'  # 7:17 AM CST (winter, UTC-6) — 2h43m buffer before 10 AM CT target
   workflow_dispatch:  # Allows manual trigger
     inputs:
         env:
@@ -32,10 +32,10 @@ jobs:
           echo "Actual start (UTC): $(date -u '+%Y-%m-%d %H:%M:%S')"
           echo "Actual start (CT):  $(TZ='America/Chicago' date '+%Y-%m-%d %H:%M:%S %Z')"
           echo "======================"
-          if [ "$CRON" = "50 13 * * 0-4" ] && [ "$CURRENT_TZ" = "CST" ]; then
+          if [ "$CRON" = "17 12 * * 0-4" ] && [ "$CURRENT_TZ" = "CST" ]; then
             echo "Skipping: CDT schedule triggered during CST"
             echo "should_run=false" >> "$GITHUB_OUTPUT"
-          elif [ "$CRON" = "50 14 * * 0-4" ] && [ "$CURRENT_TZ" = "CDT" ]; then
+          elif [ "$CRON" = "17 13 * * 0-4" ] && [ "$CURRENT_TZ" = "CDT" ]; then
             echo "Skipping: CST schedule triggered during CDT"
             echo "should_run=false" >> "$GITHUB_OUTPUT"
           else
