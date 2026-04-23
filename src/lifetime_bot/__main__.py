@@ -24,16 +24,12 @@ def run_bot() -> bool:
         try:
             print(f"Attempt {retry_count + 1}/{max_retries} to reserve class")
             bot = LifetimeReservationBot()
-            success = bot.reserve_class()
-            if success:
+            if bot.reserve_class():
                 print("Class reservation completed successfully!")
                 return True
         except Exception as e:
             retry_count += 1
             print(f"Attempt {retry_count}/{max_retries} failed with error: {e!s}")
-
-            if bot:
-                bot.cleanup()
 
             if retry_count >= max_retries:
                 try:
@@ -71,8 +67,13 @@ def main() -> int:
     target_time = get_target_utc_time(local_time, timezone)
     print(f"Target time: {local_time} {timezone} -> {target_time} UTC")
 
-    wait_until_utc(target_time, run_bot)
-    return 0
+    outcome = {"success": False}
+
+    def _scheduled() -> None:
+        outcome["success"] = run_bot()
+
+    wait_until_utc(target_time, _scheduled)
+    return 0 if outcome["success"] else 1
 
 
 if __name__ == "__main__":

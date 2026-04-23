@@ -90,31 +90,16 @@ class ClubConfig:
     """Life Time club configuration."""
 
     name: str
-    state: str
 
     @classmethod
     def from_env(cls) -> ClubConfig:
         """Create ClubConfig from environment variables."""
         name = os.getenv("LIFETIME_CLUB_NAME", "")
-        state = os.getenv("LIFETIME_CLUB_STATE", "")
-        if not name or not state:
+        if not name:
             raise ValueError(
-                "LIFETIME_CLUB_NAME and LIFETIME_CLUB_STATE environment variables are required"
+                "LIFETIME_CLUB_NAME environment variable is required"
             )
-        return cls(name=name, state=state)
-
-    def get_url_segment(self) -> str:
-        """Convert club name to URL-friendly format."""
-        name = self.name.replace("Life Time", "").replace("LifeTime", "").strip()
-        name = name.strip(" -")
-        name = name.replace(" at ", "-").replace(" - ", "-")
-        name = name.lower().replace(" ", "-")
-        name = "".join(c for c in name if c.isalnum() or c == "-")
-        return name
-
-    def get_url_param(self) -> str:
-        """Get URL parameter format for club name."""
-        return self.name.replace(" ", "+")
+        return cls(name=name)
 
 
 @dataclass

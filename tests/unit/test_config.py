@@ -187,44 +187,17 @@ class TestClubConfig:
     def test_init(self, club_config: ClubConfig) -> None:
         """Test ClubConfig initialization."""
         assert club_config.name == "San Antonio 281"
-        assert club_config.state == "TX"
 
     def test_from_env(self, mock_env: dict[str, str]) -> None:
         """Test creating ClubConfig from environment variables."""
         config = ClubConfig.from_env()
         assert config.name == "San Antonio 281"
-        assert config.state == "TX"
 
     def test_from_env_raises_without_name(self) -> None:
         """Test from_env raises ValueError when name is missing."""
-        with patch.dict(os.environ, {"LIFETIME_CLUB_STATE": "TX"}, clear=True):
+        with patch.dict(os.environ, {}, clear=True):
             with pytest.raises(ValueError, match="LIFETIME_CLUB_NAME"):
                 ClubConfig.from_env()
-
-    def test_from_env_raises_without_state(self) -> None:
-        """Test from_env raises ValueError when state is missing."""
-        with patch.dict(os.environ, {"LIFETIME_CLUB_NAME": "Test Club"}, clear=True):
-            with pytest.raises(ValueError, match="LIFETIME_CLUB_STATE"):
-                ClubConfig.from_env()
-
-    def test_get_url_segment(self) -> None:
-        """Test URL segment generation."""
-        config = ClubConfig(name="San Antonio 281", state="TX")
-        assert config.get_url_segment() == "san-antonio-281"
-
-    def test_get_url_segment_with_life_time_prefix(self) -> None:
-        """Test URL segment strips Life Time prefix."""
-        config = ClubConfig(name="Life Time - Flower Mound", state="TX")
-        assert config.get_url_segment() == "flower-mound"
-
-    def test_get_url_segment_with_at(self) -> None:
-        """Test URL segment handles 'at' in name."""
-        config = ClubConfig(name="Club at Location", state="TX")
-        assert config.get_url_segment() == "club-location"
-
-    def test_get_url_param(self, club_config: ClubConfig) -> None:
-        """Test URL param generation."""
-        assert club_config.get_url_param() == "San+Antonio+281"
 
 
 class TestBotConfig:
@@ -245,7 +218,6 @@ class TestBotConfig:
         assert config.username == "test@example.com"
         assert config.password == "testpassword"
         assert config.club.name == "San Antonio 281"
-        assert config.club.state == "TX"
         assert config.target_class.name == "Pickleball"
         assert config.notification_method == "email"
         assert config.run_on_schedule is False

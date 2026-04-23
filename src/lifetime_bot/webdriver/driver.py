@@ -35,6 +35,10 @@ def create_driver(
     if headless:
         options.add_argument("--headless=new")
 
+    # Enable performance logs so the orchestrator can observe the SPA's own
+    # authenticated requests and extract x-ltf-* headers from them.
+    options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
+
     driver = webdriver.Chrome(options=options)
 
     caps = driver.capabilities

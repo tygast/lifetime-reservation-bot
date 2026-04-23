@@ -54,10 +54,7 @@ def class_config() -> ClassConfig:
 @pytest.fixture
 def club_config() -> ClubConfig:
     """Create a test club configuration."""
-    return ClubConfig(
-        name="San Antonio 281",
-        state="TX",
-    )
+    return ClubConfig(name="San Antonio 281")
 
 
 @pytest.fixture
@@ -88,7 +85,6 @@ def env_vars() -> dict[str, str]:
         "LIFETIME_USERNAME": "test@example.com",
         "LIFETIME_PASSWORD": "testpassword",
         "LIFETIME_CLUB_NAME": "San Antonio 281",
-        "LIFETIME_CLUB_STATE": "TX",
         "TARGET_CLASS": "Pickleball",
         "TARGET_INSTRUCTOR": "John D",
         "TARGET_DATE": "2026-01-15",

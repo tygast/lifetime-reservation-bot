@@ -4,15 +4,23 @@ An automated bot that helps you reserve classes at Life Time Fitness clubs. The 
 
 ## Features
 
-- Automatically logs into your Life Time Fitness account
-- Navigates to the class schedule for your preferred club
-- Finds and reserves your target class based on class name, instructor, and time
-- Handles waitlist scenarios automatically
-- Special handling for classes requiring waivers (e.g., Pickleball)
-- Sends notifications via email and/or SMS about reservation status
+- Signs in to your Life Time account through the Azure AD B2C login form using Selenium
+- Captures the session tokens (`x-ltf-jwe`, `x-ltf-profile`, `x-ltf-ssoid`) the Life Time SPA uses, then closes the browser
+- Calls `api.lifetimefitness.com` directly to list classes, reserve, waitlist, and accept required waivers
+- Sends notifications via email and/or SMS with the specific outcome (reserved / waitlisted / registered)
 - Configurable retry logic (up to 3 attempts)
 - Can be scheduled to run at specific local times with automatic DST handling
 - Runs automatically via GitHub Actions or locally
+
+## How it works
+
+1. **Login (Selenium, ~10 seconds).** Opens Chrome, fills in the Azure B2C login form (`id=signInName` / `id=password`), and waits for the redirect chain to settle on `my.lifetime.life`.
+2. **Token extraction.** Navigates to an authenticated page and mines Chrome's performance log for the SPA's first outgoing request to `api.lifetimefitness.com`. Reads the `x-ltf-*` headers off that request.
+3. **Browser closes.** Everything after this point is plain HTTP.
+4. **List classes.** `GET /ux/web-schedules/v2/schedules/classes?locations=...&start=...&end=...` → JSON list. The bot filters by class name / instructor / start-time / end-time.
+5. **Register.** `POST /sys/registrations/V3/ux/event` with the event id. The server decides reservation vs waitlist based on capacity.
+6. **Finalize if needed.** `PUT /sys/registrations/V3/ux/event/{id}/complete` with any required document (waiver) acceptances.
+7. **Notify.** Email/SMS with subject indicating reserved vs waitlisted vs failed.
 
 ## Project Structure
 
@@ -21,36 +29,31 @@ lifetime-reservation-bot/
 ├── src/
 │   └── lifetime_bot/
 │       ├── __init__.py          # Package exports
-│       ├── __main__.py          # CLI entry point with retry logic
-│       ├── bot.py               # Main LifetimeReservationBot class
+│       ├── __main__.py          # CLI entry point with retry + scheduling
+│       ├── bot.py               # Orchestrator: login -> tokens -> API
+│       ├── api.py               # HTTP client for api.lifetimefitness.com
 │       ├── config.py            # Configuration dataclasses
 │       ├── notifications/
-│       │   ├── __init__.py
 │       │   ├── base.py          # Abstract notification service
 │       │   ├── email.py         # Email notification service
 │       │   └── sms.py           # SMS notification service (via Twilio)
 │       ├── utils/
-│       │   ├── __init__.py
 │       │   └── timing.py        # Timing and scheduling utilities
 │       └── webdriver/
-│           ├── __init__.py
 │           └── driver.py        # Selenium WebDriver setup
-├── archive/
-│   └── lifetime_bot.py          # Legacy monolithic version (deprecated)
 ├── .github/
 │   └── workflows/
 │       ├── bot.yml              # GitHub Actions workflow
 │       └── keepalive.yml        # Prevents workflow disabling after 60 days
 ├── pyproject.toml               # Python project configuration
 ├── .env.example                 # Environment variables template
-├── .gitignore                   # Git ignore rules
 └── README.md                    # This file
 ```
 
 ## Requirements
 
 - Python 3.9 or higher
-- Chrome browser (for Selenium WebDriver)
+- Chrome browser (used only for Azure B2C login)
 - Gmail account (or other SMTP provider) for sending notifications
 
 ## Installation

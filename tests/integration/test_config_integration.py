@@ -24,9 +24,6 @@ class TestBotConfigIntegration:
 
             # Verify club config
             assert config.club.name == "San Antonio 281"
-            assert config.club.state == "TX"
-            assert config.club.get_url_segment() == "san-antonio-281"
-            assert config.club.get_url_param() == "San+Antonio+281"
 
             # Verify class config
             assert config.target_class.name == "Pickleball"
@@ -99,7 +96,6 @@ class TestBotConfigIntegration:
             "LIFETIME_USERNAME": "user@example.com",
             "LIFETIME_PASSWORD": "password",
             "LIFETIME_CLUB_NAME": "Test Club",
-            "LIFETIME_CLUB_STATE": "CA",
             "NOTIFICATION_METHOD": "both",
             "EMAIL_SENDER": "sender@gmail.com",
             "EMAIL_PASSWORD": "emailpass",
@@ -118,26 +114,21 @@ class TestBotConfigIntegration:
 
 
 class TestClubConfigIntegration:
-    """Integration tests for club URL generation."""
+    """Integration tests for club configuration from env."""
 
     def test_various_club_names(self) -> None:
-        """Test URL generation for various club name formats."""
-        test_cases = [
-            ("San Antonio 281", "TX", "san-antonio-281", "San+Antonio+281"),
-            ("Life Time - Flower Mound", "TX", "flower-mound", "Life+Time+-+Flower+Mound"),
-            ("Club at Location", "CA", "club-location", "Club+at+Location"),
-            ("North Dallas", "TX", "north-dallas", "North+Dallas"),
-        ]
-
-        for name, state, expected_segment, expected_param in test_cases:
+        """Club name passes through verbatim (used as the API ``locations`` param)."""
+        for name in [
+            "San Antonio 281",
+            "Life Time - Flower Mound",
+            "Club at Location",
+            "North Dallas",
+        ]:
             env = {
                 "LIFETIME_USERNAME": "user@example.com",
                 "LIFETIME_PASSWORD": "password",
                 "LIFETIME_CLUB_NAME": name,
-                "LIFETIME_CLUB_STATE": state,
             }
             with patch.dict(os.environ, env, clear=True):
                 config = BotConfig.from_env(reload_env=False)
-
-                assert config.club.get_url_segment() == expected_segment, f"Failed for {name}"
-                assert config.club.get_url_param() == expected_param, f"Failed for {name}"
+                assert config.club.name == name
