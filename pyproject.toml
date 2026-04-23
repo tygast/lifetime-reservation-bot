@@ -23,6 +23,7 @@ classifiers = [
 
 dependencies = [
     "python-dotenv>=1.0.0",
+    "requests>=2.31.0",
     "selenium>=4.0.0",
     "twilio>=8.0.0",
 ]
