@@ -107,16 +107,33 @@ class LifetimeReservationBot:
         )
 
     def login(self) -> None:
-        """Log into Life Time Fitness website."""
+        """Log into Life Time Fitness website.
+
+        Life Time's login is Azure AD B2C (form id=localAccountForm). The
+        email field is id=signInName, the password field is id=password.
+        After submit, wait for the full B2C redirect chain to resolve off
+        the login/b2clogin pages before returning so callers don't fire
+        requests during an in-flight session handshake.
+        """
         self.driver.get(self.config.login_url)
-        self.wait.until(EC.presence_of_element_located((By.NAME, "username"))).send_keys(
+        self.wait.until(EC.presence_of_element_located((By.ID, "signInName"))).send_keys(
             self.config.username
         )
-        self.wait.until(EC.presence_of_element_located((By.NAME, "password"))).send_keys(
+        self.wait.until(EC.presence_of_element_located((By.ID, "password"))).send_keys(
             self.config.password + Keys.RETURN
         )
-        time.sleep(3)
-        print("Logged in successfully.")
+
+        def _login_complete(driver: WebDriver) -> bool:
+            url = driver.current_url.lower()
+            return (
+                "my.lifetime.life" in url
+                and "/login.html" not in url
+                and "b2clogin.com" not in url
+            )
+
+        self.wait.until(_login_complete)
+        time.sleep(2)
+        print(f"Logged in successfully. Landed on: {self.driver.current_url}")
 
     def navigate_to_schedule(self, target_date: str) -> bool:
         """Navigate to the class schedule page.

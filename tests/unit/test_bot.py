@@ -187,8 +187,9 @@ class TestLogin:
         bot.login()
 
         mock_driver.get.assert_called_once_with(bot.config.login_url)
-        # Wait should be called for both username and password fields
-        assert mock_wait.until.call_count == 2
+        # Wait is called three times: signInName field, password field,
+        # and a final predicate that polls for the B2C redirect chain to finish.
+        assert mock_wait.until.call_count == 3
 
 
 class TestNavigateToSchedule:
