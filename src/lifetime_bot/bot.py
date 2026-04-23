@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import time
+import traceback
 from typing import TYPE_CHECKING
 
 from selenium.webdriver.common.by import By
@@ -235,10 +236,13 @@ class LifetimeReservationBot:
                 raise RuntimeError("Reservation process failed")
 
         except Exception as e:
-            print(f"Reservation failed: {e}")
+            error_type = type(e).__name__
+            print(f"Reservation failed ({error_type}): {e}")
+            print(traceback.format_exc())
             self.send_notification(
                 "Lifetime Bot - Failure",
-                f"Failed to reserve class:\n\n{class_details}\n\nError: {e!s}",
+                f"Failed to reserve class:\n\n{class_details}\n\n"
+                f"Error ({error_type}): {e!s}",
             )
             raise
 

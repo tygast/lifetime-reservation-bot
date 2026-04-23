@@ -140,10 +140,10 @@ class BotConfig:
             reload_env: If True, clear and reload environment variables from .env file.
         """
         if reload_env:
-            # Clear any cached environment variables
-            for key in list(os.environ.keys()):
-                del os.environ[key]
-            # Load from .env file
+            # Overlay .env onto the existing environment. Do NOT wipe os.environ
+            # first — PATH/HOME/TMPDIR/LD_LIBRARY_PATH are needed by the Chrome
+            # subprocess launched by Selenium, and clearing them crashes Chrome
+            # on first navigation with an empty-message WebDriverException.
             load_dotenv(override=True)
 
         notification_method = os.getenv("NOTIFICATION_METHOD", "email").lower()

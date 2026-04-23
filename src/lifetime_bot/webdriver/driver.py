@@ -8,10 +8,8 @@ import warnings
 warnings.filterwarnings("ignore")
 
 from selenium import webdriver  # noqa: E402
-from selenium.webdriver.chrome.service import Service  # noqa: E402
 from selenium.webdriver.remote.webdriver import WebDriver  # noqa: E402
 from selenium.webdriver.support.ui import WebDriverWait  # noqa: E402
-from webdriver_manager.chrome import ChromeDriverManager  # noqa: E402
 
 
 def create_driver(
@@ -37,10 +35,14 @@ def create_driver(
     if headless:
         options.add_argument("--headless=new")
 
-    driver = webdriver.Chrome(
-        service=Service(ChromeDriverManager().install()),
-        options=options,
+    driver = webdriver.Chrome(options=options)
+
+    caps = driver.capabilities
+    browser_version = caps.get("browserVersion", "unknown")
+    driver_version = (
+        caps.get("chrome", {}).get("chromedriverVersion", "unknown").split(" ", 1)[0]
     )
+    print(f"Chrome {browser_version} / ChromeDriver {driver_version}")
 
     wait = WebDriverWait(driver, wait_timeout)
 
