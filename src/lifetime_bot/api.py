@@ -13,6 +13,7 @@ import binascii
 import json
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from enum import Enum
 from typing import Any
 
 import requests
@@ -87,31 +88,75 @@ class ClassEvent:
     raw: dict[str, Any] = field(repr=False)
 
 
+class RegistrationOutcome(str, Enum):
+    """Explicit reservation outcomes used throughout the bot."""
+
+    RESERVED = "reserved"
+    WAITLISTED = "waitlisted"
+    ALREADY_RESERVED = "already_reserved"
+    PENDING_COMPLETION = "pending_completion"
+    UNKNOWN = "unknown"
+
+
 @dataclass(frozen=True)
 class RegistrationResult:
     """Outcome of POST /sys/registrations/V3/ux/event.
 
-    ``status`` values observed so far: "reserved", "waitlisted", "pending".
-    ``needs_complete`` means the caller should PUT .../complete to finalize.
+    ``outcome`` is the normalized domain-level state.
+    ``raw_status`` preserves the raw API status string for diagnostics.
     """
 
-    registration_id: int
-    status: str
+    registration_id: int | None
+    outcome: RegistrationOutcome
+    raw_status: str
     needs_complete: bool
-    required_documents: list[int] | None
     raw: dict[str, Any] = field(repr=False)
+    required_documents: tuple[int, ...] | None = None
 
     @property
     def was_waitlisted(self) -> bool:
-        return "wait" in self.status.lower()
+        return self.outcome is RegistrationOutcome.WAITLISTED
 
     @property
     def was_already_reserved(self) -> bool:
-        return self.status.lower().replace(" ", "_") == "already_reserved"
+        return self.outcome is RegistrationOutcome.ALREADY_RESERVED
 
     @property
     def was_reserved(self) -> bool:
-        return self.status.lower() in {"reserved", "confirmed", "registered", "complete"}
+        return self.outcome is RegistrationOutcome.RESERVED
+
+    @property
+    def is_terminal(self) -> bool:
+        return self.outcome in {
+            RegistrationOutcome.RESERVED,
+            RegistrationOutcome.ALREADY_RESERVED,
+            RegistrationOutcome.WAITLISTED,
+        }
+
+    @property
+    def display_status(self) -> str:
+        return self.raw_status or self.outcome.value
+
+    @classmethod
+    def already_reserved(cls, raw: dict[str, Any]) -> RegistrationResult:
+        return cls(
+            registration_id=None,
+            outcome=RegistrationOutcome.ALREADY_RESERVED,
+            raw_status="already_reserved",
+            needs_complete=False,
+            required_documents=None,
+            raw=raw,
+        )
+
+    def completed(self) -> RegistrationResult:
+        return RegistrationResult(
+            registration_id=self.registration_id,
+            outcome=RegistrationOutcome.RESERVED,
+            raw_status="complete",
+            needs_complete=False,
+            required_documents=self.required_documents,
+            raw=self.raw,
+        )
 
 
 class LifetimeAPIClient:
@@ -519,11 +564,14 @@ def _parse_registration_result(payload: dict[str, Any]) -> RegistrationResult:
         "incomplete",
         "",
     }
+    outcome = _classify_registration_outcome(status, needs_complete=needs_complete)
+    documents = extract_required_document_ids(payload)
     return RegistrationResult(
         registration_id=reg_id,
-        status=status,
+        outcome=outcome,
+        raw_status=status,
         needs_complete=needs_complete,
-        required_documents=_extract_required_documents(payload),
+        required_documents=tuple(documents) if documents is not None else None,
         raw=payload,
     )
 
@@ -548,7 +596,20 @@ def _first_int(payload: dict[str, Any], *keys: str) -> int | None:
     return None
 
 
-def _extract_required_documents(payload: dict[str, Any]) -> list[int] | None:
+def _classify_registration_outcome(
+    status: str, *, needs_complete: bool
+) -> RegistrationOutcome:
+    normalized = status.strip().lower()
+    if "wait" in normalized:
+        return RegistrationOutcome.WAITLISTED
+    if needs_complete:
+        return RegistrationOutcome.PENDING_COMPLETION
+    if normalized in {"reserved", "confirmed", "registered", "complete"}:
+        return RegistrationOutcome.RESERVED
+    return RegistrationOutcome.UNKNOWN
+
+
+def extract_required_document_ids(payload: dict[str, Any]) -> list[int] | None:
     for key in ("requiredDocuments", "documents", "acceptedDocuments"):
         value = payload.get(key)
         if not isinstance(value, list):

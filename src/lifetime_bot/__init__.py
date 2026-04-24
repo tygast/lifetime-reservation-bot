@@ -9,6 +9,7 @@ from lifetime_bot.api import (
     ClassEvent,
     LifetimeAPIClient,
     LifetimeAPIError,
+    RegistrationOutcome,
     RegistrationResult,
     SessionTokens,
 )
@@ -24,5 +25,6 @@ __all__ = [
     "LifetimeAPIError",
     "SessionTokens",
     "ClassEvent",
+    "RegistrationOutcome",
     "RegistrationResult",
 ]

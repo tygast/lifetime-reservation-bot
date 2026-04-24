@@ -13,6 +13,7 @@ import pytest
 from lifetime_bot.api import (
     ClassEvent,
     LifetimeAPIError,
+    RegistrationOutcome,
     RegistrationResult,
     SessionTokens,
 )
@@ -111,34 +112,53 @@ class TestGetClassDetails:
 
 
 class TestDescribeOutcome:
-    def _result(self, status: str, *, needs_complete: bool = False) -> RegistrationResult:
+    def _result(
+        self,
+        outcome: RegistrationOutcome,
+        *,
+        raw_status: str | None = None,
+        needs_complete: bool = False,
+        required_documents: tuple[int, ...] | None = None,
+    ) -> RegistrationResult:
         return RegistrationResult(
             registration_id=1,
-            status=status,
+            outcome=outcome,
+            raw_status=raw_status or outcome.value,
             needs_complete=needs_complete,
-            required_documents=None,
+            required_documents=required_documents,
             raw={},
         )
 
     def test_reserved_outcome(self, bot: LifetimeReservationBot) -> None:
-        subject, body = bot._describe_outcome(self._result("reserved"), "details")
+        subject, body = bot._describe_outcome(
+            self._result(RegistrationOutcome.RESERVED), "details"
+        )
         assert subject == "Lifetime Bot - Reserved"
         assert "successfully reserved" in body
         assert "details" in body
 
     def test_waitlisted_outcome(self, bot: LifetimeReservationBot) -> None:
-        subject, body = bot._describe_outcome(self._result("waitlisted"), "details")
+        subject, body = bot._describe_outcome(
+            self._result(RegistrationOutcome.WAITLISTED), "details"
+        )
         assert subject == "Lifetime Bot - Added to Waitlist"
         assert "waitlist" in body.lower()
 
     def test_already_reserved_outcome(self, bot: LifetimeReservationBot) -> None:
-        subject, body = bot._describe_outcome(self._result("already_reserved"), "details")
+        subject, body = bot._describe_outcome(
+            self._result(RegistrationOutcome.ALREADY_RESERVED), "details"
+        )
         assert subject == "Lifetime Bot - Already Reserved"
         assert "already on your account" in body
 
     def test_unknown_status_falls_back(self, bot: LifetimeReservationBot) -> None:
         subject, body = bot._describe_outcome(
-            self._result("", needs_complete=True), "details"
+            self._result(
+                RegistrationOutcome.PENDING_COMPLETION,
+                raw_status="pending",
+                needs_complete=True,
+            ),
+            "details",
         )
         assert "Registered" in subject
 
@@ -206,9 +226,7 @@ class TestReserveClassHappyPath:
     def test_end_to_end_reserved(
         self, bot: LifetimeReservationBot, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            bot, "_login_and_extract_tokens", lambda: SAMPLE_TOKENS
-        )
+        monkeypatch.setattr(bot, "_login_via_api", lambda: SAMPLE_TOKENS)
         event = ClassEvent(
             event_id="ZXhlcnA6ZXZ0",
             name="Pickleball Open Play: All Levels",
@@ -223,9 +241,10 @@ class TestReserveClassHappyPath:
         client.list_classes.return_value = [event]
         client.register.return_value = RegistrationResult(
             registration_id=99,
-            status="reserved",
+            outcome=RegistrationOutcome.RESERVED,
+            raw_status="reserved",
             needs_complete=True,
-            required_documents=[77],
+            required_documents=(77,),
             raw={},
         )
         client.complete_registration.return_value = {"status": "complete"}
@@ -238,8 +257,9 @@ class TestReserveClassHappyPath:
         bot.config.run_on_schedule = False
 
         with patch("lifetime_bot.bot.LifetimeAPIClient", return_value=client):
-            assert bot.reserve_class() is True
+            result = bot.reserve_class()
 
+        assert result.outcome is RegistrationOutcome.RESERVED
         client.register.assert_called_once_with("ZXhlcnA6ZXZ0")
         client.complete_registration.assert_called_once_with(
             99, accepted_documents=[77]
@@ -254,9 +274,7 @@ class TestReserveClassHappyPath:
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        monkeypatch.setattr(
-            bot, "_login_and_extract_tokens", lambda: SAMPLE_TOKENS
-        )
+        monkeypatch.setattr(bot, "_login_via_api", lambda: SAMPLE_TOKENS)
         event = ClassEvent(
             event_id="ZXhlcnA6ZXZ0",
             name="Pickleball Open Play: All Levels",
@@ -271,7 +289,8 @@ class TestReserveClassHappyPath:
         client.list_classes.return_value = [event]
         client.register.return_value = RegistrationResult(
             registration_id=99,
-            status="reserved",
+            outcome=RegistrationOutcome.RESERVED,
+            raw_status="reserved",
             needs_complete=False,
             required_documents=None,
             raw={},
@@ -281,8 +300,9 @@ class TestReserveClassHappyPath:
         bot.config.run_on_schedule = False
 
         with patch("lifetime_bot.bot.LifetimeAPIClient", return_value=client):
-            assert bot.reserve_class() is True
+            result = bot.reserve_class()
 
+        assert result.outcome is RegistrationOutcome.RESERVED
         captured = capsys.readouterr().out
         assert "Reservation outcome: Reserved." in captured
         assert "Notification phase started: Lifetime Bot - Reserved" in captured
@@ -293,9 +313,7 @@ class TestReserveClassHappyPath:
     def test_skips_complete_when_not_needed(
         self, bot: LifetimeReservationBot, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            bot, "_login_and_extract_tokens", lambda: SAMPLE_TOKENS
-        )
+        monkeypatch.setattr(bot, "_login_via_api", lambda: SAMPLE_TOKENS)
         event = ClassEvent(
             event_id="e",
             name="Pickleball",
@@ -310,7 +328,8 @@ class TestReserveClassHappyPath:
         client.list_classes.return_value = [event]
         client.register.return_value = RegistrationResult(
             registration_id=1,
-            status="waitlisted",
+            outcome=RegistrationOutcome.WAITLISTED,
+            raw_status="waitlisted",
             needs_complete=False,
             required_documents=None,
             raw={},
@@ -320,8 +339,9 @@ class TestReserveClassHappyPath:
         bot.config.run_on_schedule = False
 
         with patch("lifetime_bot.bot.LifetimeAPIClient", return_value=client):
-            assert bot.reserve_class() is True
+            result = bot.reserve_class()
 
+        assert result.outcome is RegistrationOutcome.WAITLISTED
         client.complete_registration.assert_not_called()
         subject = bot.email_service.send.call_args.args[0]
         assert "Waitlist" in subject
@@ -329,9 +349,7 @@ class TestReserveClassHappyPath:
     def test_fetches_required_documents_when_register_omits_them(
         self, bot: LifetimeReservationBot, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            bot, "_login_and_extract_tokens", lambda: SAMPLE_TOKENS
-        )
+        monkeypatch.setattr(bot, "_login_via_api", lambda: SAMPLE_TOKENS)
         event = ClassEvent(
             event_id="evt",
             name="Pickleball Open Play: All Levels",
@@ -346,7 +364,8 @@ class TestReserveClassHappyPath:
         client.list_classes.return_value = [event]
         client.register.return_value = RegistrationResult(
             registration_id=101,
-            status="pending",
+            outcome=RegistrationOutcome.PENDING_COMPLETION,
+            raw_status="pending",
             needs_complete=True,
             required_documents=None,
             raw={},
@@ -361,8 +380,9 @@ class TestReserveClassHappyPath:
         bot.config.run_on_schedule = False
 
         with patch("lifetime_bot.bot.LifetimeAPIClient", return_value=client):
-            assert bot.reserve_class() is True
+            result = bot.reserve_class()
 
+        assert result.outcome is RegistrationOutcome.RESERVED
         client.complete_registration.assert_called_once_with(
             101, accepted_documents=[77]
         )
@@ -372,9 +392,7 @@ class TestReserveClassHappyPath:
     def test_skips_post_when_already_reserved(
         self, bot: LifetimeReservationBot, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            bot, "_login_and_extract_tokens", lambda: SAMPLE_TOKENS
-        )
+        monkeypatch.setattr(bot, "_login_via_api", lambda: SAMPLE_TOKENS)
         event = ClassEvent(
             event_id="evt",
             name="Pickleball Open Play: All Levels",
@@ -400,8 +418,9 @@ class TestReserveClassHappyPath:
         bot.config.run_on_schedule = False
 
         with patch("lifetime_bot.bot.LifetimeAPIClient", return_value=client):
-            assert bot.reserve_class() is True
+            result = bot.reserve_class()
 
+        assert result.outcome is RegistrationOutcome.ALREADY_RESERVED
         client.register.assert_not_called()
         client.complete_registration.assert_not_called()
         subject = bot.email_service.send.call_args.args[0]
@@ -413,9 +432,7 @@ class TestReserveClassHappyPath:
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        monkeypatch.setattr(
-            bot, "_login_and_extract_tokens", lambda: SAMPLE_TOKENS
-        )
+        monkeypatch.setattr(bot, "_login_via_api", lambda: SAMPLE_TOKENS)
         event = ClassEvent(
             event_id="evt",
             name="Pickleball Open Play: All Levels",
@@ -445,8 +462,9 @@ class TestReserveClassHappyPath:
         bot.config.run_on_schedule = False
 
         with patch("lifetime_bot.bot.LifetimeAPIClient", return_value=client):
-            assert bot.reserve_class() is True
+            result = bot.reserve_class()
 
+        assert result.outcome is RegistrationOutcome.ALREADY_RESERVED
         client.register.assert_called_once_with("evt")
         client.complete_registration.assert_not_called()
         subject = bot.email_service.send.call_args.args[0]
@@ -457,9 +475,7 @@ class TestReserveClassHappyPath:
     def test_raises_post_error_when_follow_up_still_not_registered(
         self, bot: LifetimeReservationBot, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            bot, "_login_and_extract_tokens", lambda: SAMPLE_TOKENS
-        )
+        monkeypatch.setattr(bot, "_login_via_api", lambda: SAMPLE_TOKENS)
         event = ClassEvent(
             event_id="evt",
             name="Pickleball Open Play: All Levels",
@@ -496,9 +512,7 @@ class TestReserveClassHappyPath:
     def test_raises_when_required_documents_cannot_be_found(
         self, bot: LifetimeReservationBot, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            bot, "_login_and_extract_tokens", lambda: SAMPLE_TOKENS
-        )
+        monkeypatch.setattr(bot, "_login_via_api", lambda: SAMPLE_TOKENS)
         event = ClassEvent(
             event_id="evt",
             name="Pickleball Open Play: All Levels",
@@ -513,7 +527,8 @@ class TestReserveClassHappyPath:
         client.list_classes.return_value = [event]
         client.register.return_value = RegistrationResult(
             registration_id=101,
-            status="pending",
+            outcome=RegistrationOutcome.PENDING_COMPLETION,
+            raw_status="pending",
             needs_complete=True,
             required_documents=None,
             raw={},
@@ -542,7 +557,7 @@ class TestReserveClassFailures:
         def _fail() -> SessionTokens:
             raise RuntimeError("login broke")
 
-        monkeypatch.setattr(bot, "_login_and_extract_tokens", _fail)
+        monkeypatch.setattr(bot, "_login_via_api", _fail)
 
         with pytest.raises(RuntimeError):
             bot.reserve_class()
@@ -553,9 +568,7 @@ class TestReserveClassFailures:
     def test_notifies_on_missing_class(
         self, bot: LifetimeReservationBot, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            bot, "_login_and_extract_tokens", lambda: SAMPLE_TOKENS
-        )
+        monkeypatch.setattr(bot, "_login_via_api", lambda: SAMPLE_TOKENS)
         client = MagicMock()
         client.list_classes.return_value = []
 
@@ -605,15 +618,6 @@ class TestDirectAPIAuth:
         assert bot.api_session is session
         session.post.assert_called_once()
         session.get.assert_called_once()
-
-    def test_login_and_extract_tokens_uses_direct_api(
-        self, bot: LifetimeReservationBot, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        direct = MagicMock(return_value=SAMPLE_TOKENS)
-        monkeypatch.setattr(bot, "_login_via_api", direct)
-
-        assert bot._login_and_extract_tokens() == SAMPLE_TOKENS
-        direct.assert_called_once_with()
 
     @pytest.mark.parametrize(
         ("login_payload", "profile_payload", "expected"),

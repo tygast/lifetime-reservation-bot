@@ -8,7 +8,18 @@ from unittest.mock import MagicMock, patch
 import requests
 
 from lifetime_bot import __main__ as main_module
-from lifetime_bot.api import LifetimeAPIError
+from lifetime_bot.api import LifetimeAPIError, RegistrationOutcome, RegistrationResult
+
+
+def _result(outcome: RegistrationOutcome) -> RegistrationResult:
+    return RegistrationResult(
+        registration_id=1,
+        outcome=outcome,
+        raw_status=outcome.value,
+        needs_complete=False,
+        required_documents=None,
+        raw={},
+    )
 
 
 class TestRunBot:
@@ -18,7 +29,7 @@ class TestRunBot:
         self, bot_class: MagicMock, sleep_mock: MagicMock
     ) -> None:
         bot = MagicMock()
-        bot.reserve_class.return_value = True
+        bot.reserve_class.return_value = _result(RegistrationOutcome.RESERVED)
         bot_class.return_value = bot
 
         with patch.dict(os.environ, {}, clear=False):
@@ -36,7 +47,7 @@ class TestRunBot:
         first = MagicMock()
         first.reserve_class.side_effect = requests.Timeout("boom")
         second = MagicMock()
-        second.reserve_class.return_value = True
+        second.reserve_class.return_value = _result(RegistrationOutcome.RESERVED)
         bot_class.side_effect = [first, second]
 
         with patch.dict(
@@ -51,13 +62,15 @@ class TestRunBot:
 
     @patch("lifetime_bot.__main__.time.sleep")
     @patch("lifetime_bot.__main__.LifetimeReservationBot")
-    def test_false_result_is_treated_as_failure_and_retried(
+    def test_non_terminal_result_is_treated_as_failure_and_retried(
         self, bot_class: MagicMock, sleep_mock: MagicMock
     ) -> None:
         first = MagicMock()
-        first.reserve_class.return_value = False
+        first.reserve_class.return_value = _result(
+            RegistrationOutcome.PENDING_COMPLETION
+        )
         second = MagicMock()
-        second.reserve_class.return_value = True
+        second.reserve_class.return_value = _result(RegistrationOutcome.RESERVED)
         bot_class.side_effect = [first, second]
 
         with patch.dict(

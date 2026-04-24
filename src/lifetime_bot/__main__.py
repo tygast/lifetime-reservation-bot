@@ -14,7 +14,7 @@ from lifetime_bot.utils.timing import get_target_utc_time, wait_until_utc
 
 
 class RetryableReservationError(RuntimeError):
-    """Raised when the bot returns a retryable falsey result."""
+    """Raised when the bot returns a retryable non-terminal outcome."""
 
 
 def run_bot() -> bool:
@@ -34,16 +34,21 @@ def run_bot() -> bool:
         try:
             print(f"Attempt {retry_count + 1}/{max_retries} to reserve class")
             bot = LifetimeReservationBot()
-            if bot.reserve_class():
+            result = bot.reserve_class()
+            if result.is_terminal:
                 print(
                     f"Attempt {retry_count + 1}/{max_retries} succeeded in "
                     f"{time.perf_counter() - attempt_started:.2f}s"
                 )
                 print(f"Run completed in {time.perf_counter() - started:.2f}s")
-                print("Class reservation completed successfully!")
+                print(
+                    "Class reservation completed with outcome: "
+                    f"{result.outcome.value}."
+                )
                 return True
             raise RetryableReservationError(
-                "Reservation attempt returned False without raising an error"
+                "Reservation attempt returned a non-terminal outcome without raising "
+                "an error"
             )
         except Exception as e:
             retry_count += 1

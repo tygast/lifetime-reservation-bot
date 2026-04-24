@@ -17,8 +17,10 @@ from lifetime_bot.api import (
     ClassEvent,
     LifetimeAPIClient,
     LifetimeAPIError,
+    RegistrationOutcome,
     RegistrationResult,
     SessionTokens,
+    extract_required_document_ids,
     match_class,
 )
 from lifetime_bot.config import BotConfig
@@ -51,15 +53,15 @@ class LifetimeReservationBot:
 
     # -- Public entry point --------------------------------------------------
 
-    def reserve_class(self) -> bool:
-        """Run the full login → find class → register flow. Raises on failure."""
+    def reserve_class(self) -> RegistrationResult:
+        """Run the full auth → find class → reserve flow. Raises on failure."""
         started = time.perf_counter()
         target_date = self._get_target_date()
         class_details = self._get_class_details(target_date)
 
         try:
             auth_started = time.perf_counter()
-            tokens = self._login_and_extract_tokens()
+            tokens = self._login_via_api()
             print(f"Auth completed in {time.perf_counter() - auth_started:.2f}s.")
         except Exception as exc:
             self._report_failure(exc, class_details, phase="login")
@@ -97,7 +99,7 @@ class LifetimeReservationBot:
                     result = client.register(event.event_id)
                     print(
                         f"POST /event → registrationId={result.registration_id} "
-                        f"status={result.status or 'unknown'} "
+                        f"status={result.display_status} "
                         f"needs_complete={result.needs_complete}"
                     )
                 except LifetimeAPIError as exc:
@@ -126,20 +128,20 @@ class LifetimeReservationBot:
                         "Registration requires completion, but no waiver/document ids "
                         "were available."
                     )
+                accepted_documents = list(documents)
                 client.complete_registration(
                     result.registration_id,
-                    accepted_documents=documents,
+                    accepted_documents=accepted_documents,
                 )
-                result = RegistrationResult(
-                    registration_id=result.registration_id,
-                    status="complete",
-                    needs_complete=False,
-                    required_documents=documents,
-                    raw=result.raw,
-                )
+                result = result.completed()
                 print(
                     f"PUT /complete succeeded "
-                    f"(accepted documents: {documents})."
+                    f"(accepted documents: {accepted_documents})."
+                )
+            if result.outcome is RegistrationOutcome.UNKNOWN:
+                raise LifetimeAPIError(
+                    "Reservation API returned an unknown terminal status: "
+                    f"{result.display_status or '<empty>'}"
                 )
             print(
                 "Reservation API phase completed in "
@@ -156,7 +158,7 @@ class LifetimeReservationBot:
         )
         self.send_notification(subject, body)
         print(f"Reservation flow finished in {time.perf_counter() - started:.2f}s.")
-        return True
+        return result
 
     # -- Notifications -------------------------------------------------------
 
@@ -205,9 +207,6 @@ class LifetimeReservationBot:
                 f"SMS notification attempt completed in "
                 f"{time.perf_counter() - started:.2f}s."
             )
-
-    def _login_and_extract_tokens(self) -> SessionTokens:
-        return self._login_via_api()
 
     # -- Direct API auth ----------------------------------------------------
 
@@ -357,7 +356,7 @@ class LifetimeReservationBot:
         except LifetimeAPIError as exc:
             print(f"Could not fetch registration info for required docs: {exc}")
             return None
-        return _extract_required_doc_ids(info)
+        return extract_required_document_ids(info)
 
     def _detect_existing_registration(
         self, client: LifetimeAPIClient, event_id: str, *, context: str
@@ -391,13 +390,7 @@ class LifetimeReservationBot:
             f"Registration info ({context}) shows {member_name} "
             f"({client.member_id}) is already reserved for event {event_id}."
         )
-        return RegistrationResult(
-            registration_id=0,
-            status="already_reserved",
-            needs_complete=False,
-            required_documents=None,
-            raw=info,
-        )
+        return RegistrationResult.already_reserved(info)
 
     # -- Reporting helpers ---------------------------------------------------
 
@@ -437,7 +430,7 @@ class LifetimeReservationBot:
                 "Lifetime Bot - Reserved",
                 f"Your class was successfully reserved!\n\n{class_details}",
             )
-        status = result.status or "unknown"
+        status = result.display_status
         return (
             f"Lifetime Bot - Registered ({status})",
             f"Registration completed (status: {status}).\n\n{class_details}",
@@ -459,32 +452,6 @@ class LifetimeReservationBot:
             f"{phase.title()} failed:\n\n{class_details}\n\n"
             f"Error ({error_type}): {exc!s}",
         )
-
-
-def _extract_required_doc_ids(info: dict[str, Any]) -> list[int] | None:
-    """Pull waiver/document ids out of an /events/{id}/registration response."""
-    for key in ("requiredDocuments", "documents", "waivers", "acceptedDocuments"):
-        value = info.get(key)
-        if not isinstance(value, list):
-            continue
-        ids: list[int] = []
-        for doc in value:
-            if isinstance(doc, int):
-                ids.append(doc)
-            elif isinstance(doc, dict):
-                doc_id = doc.get("id")
-                if isinstance(doc_id, int):
-                    ids.append(doc_id)
-        if ids:
-            return ids
-    agreement = info.get("agreement")
-    if isinstance(agreement, dict):
-        agreement_id = agreement.get("agreementId")
-        if isinstance(agreement_id, int):
-            return [agreement_id]
-        if isinstance(agreement_id, str) and agreement_id.isdigit():
-            return [int(agreement_id)]
-    return None
 
 
 def _find_registered_member(

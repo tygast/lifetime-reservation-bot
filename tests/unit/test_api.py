@@ -16,6 +16,7 @@ from lifetime_bot.api import (
     ClassEvent,
     LifetimeAPIClient,
     LifetimeAPIError,
+    RegistrationOutcome,
     SessionTokens,
     match_class,
 )
@@ -355,7 +356,8 @@ class TestRegister:
         assert url == f"{API_BASE}/sys/registrations/V3/ux/event"
         assert body == {"eventId": "ZXhlcnA6ZXZlbnQ=", "memberId": [110137193]}
         assert result.registration_id == 185592233
-        assert result.was_reserved is True
+        assert result.outcome is RegistrationOutcome.PENDING_COMPLETION
+        assert result.was_reserved is False
         assert result.was_waitlisted is False
         assert result.needs_complete is True
 
@@ -376,9 +378,10 @@ class TestRegister:
 
         result = client.register("evt")
 
-        assert result.status == "pending"
+        assert result.outcome is RegistrationOutcome.PENDING_COMPLETION
+        assert result.raw_status == "pending"
         assert result.needs_complete is True
-        assert result.required_documents == [77]
+        assert result.required_documents == (77,)
 
     def test_raises_when_response_missing_id(self) -> None:
         client, _ = _client_with_mock(_FakeResponse(payload={"status": "reserved"}))
