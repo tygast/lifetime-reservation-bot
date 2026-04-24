@@ -9,7 +9,7 @@ import pytest
 
 from lifetime_bot.config import ClassConfig
 from lifetime_bot.errors import LifetimeAPIError
-from lifetime_bot.models import ClassEvent
+from lifetime_bot.models import ClassEvent, RegistrationOutcome, RegistrationResult
 from lifetime_bot.reservations import ReservationService
 
 
@@ -128,3 +128,115 @@ class TestReservationServiceRegistrationDetection:
             ReservationService(client).detect_existing_registration(
                 "evt", context="preflight"
             )
+
+
+class TestReservationServiceReserveEvent:
+    def test_returns_reserved_result(self) -> None:
+        client = MagicMock()
+        client.get_registration_info.side_effect = LifetimeAPIError(
+            "not found", status_code=404
+        )
+        client.register.return_value = RegistrationResult(
+            registration_id=99,
+            outcome=RegistrationOutcome.RESERVED,
+            raw_status="reserved",
+            needs_complete=False,
+            required_documents=None,
+            raw={},
+        )
+
+        result = ReservationService(client).reserve_event("ZXhlcnA6ZXZ0")
+
+        assert result.outcome is RegistrationOutcome.RESERVED
+        client.register.assert_called_once_with("ZXhlcnA6ZXZ0")
+        client.complete_registration.assert_not_called()
+
+    def test_fetches_required_documents_when_register_omits_them(self) -> None:
+        client = MagicMock()
+        client.get_registration_info.side_effect = [
+            LifetimeAPIError("not found", status_code=404),
+            {"agreement": {"agreementId": 77}},
+        ]
+        client.register.return_value = RegistrationResult(
+            registration_id=101,
+            outcome=RegistrationOutcome.PENDING_COMPLETION,
+            raw_status="pending",
+            needs_complete=True,
+            required_documents=None,
+            raw={},
+        )
+
+        result = ReservationService(client).reserve_event("evt")
+
+        assert result.outcome is RegistrationOutcome.RESERVED
+        client.complete_registration.assert_called_once_with(
+            101, accepted_documents=[77]
+        )
+
+    def test_skips_post_when_already_reserved(self) -> None:
+        client = MagicMock()
+        client.member_id = 110137193
+        client.get_registration_info.return_value = {
+            "registeredMembers": [{"id": 110137193, "name": "Tyler"}]
+        }
+
+        result = ReservationService(client).reserve_event("evt")
+
+        assert result.outcome is RegistrationOutcome.ALREADY_RESERVED
+        client.register.assert_not_called()
+        client.complete_registration.assert_not_called()
+
+    def test_treats_duplicate_post_error_as_already_reserved(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        client = MagicMock()
+        client.member_id = 110137193
+        client.get_registration_info.side_effect = [
+            {"registeredMembers": []},
+            {"registeredMembers": [{"id": 110137193, "name": "Tyler"}]},
+        ]
+        client.register.side_effect = LifetimeAPIError(
+            "POST /event returned 500", status_code=500
+        )
+
+        result = ReservationService(client).reserve_event("evt")
+
+        assert result.outcome is RegistrationOutcome.ALREADY_RESERVED
+        client.register.assert_called_once_with("evt")
+        client.complete_registration.assert_not_called()
+        captured = capsys.readouterr().out
+        assert "POST /event failed (POST /event returned 500)" in captured
+
+    def test_raises_post_error_when_follow_up_still_not_registered(self) -> None:
+        client = MagicMock()
+        client.member_id = 110137193
+        client.get_registration_info.side_effect = [
+            {"registeredMembers": []},
+            {"registeredMembers": []},
+        ]
+        client.register.side_effect = LifetimeAPIError(
+            "POST /event returned 500", status_code=500
+        )
+
+        with pytest.raises(LifetimeAPIError, match="POST /event returned 500"):
+            ReservationService(client).reserve_event("evt")
+
+    def test_raises_when_required_documents_cannot_be_found(self) -> None:
+        client = MagicMock()
+        client.get_registration_info.side_effect = [
+            LifetimeAPIError("not found", status_code=404),
+            {},
+        ]
+        client.register.return_value = RegistrationResult(
+            registration_id=101,
+            outcome=RegistrationOutcome.PENDING_COMPLETION,
+            raw_status="pending",
+            needs_complete=True,
+            required_documents=None,
+            raw={},
+        )
+
+        with pytest.raises(LifetimeAPIError, match="no waiver/document ids"):
+            ReservationService(client).reserve_event("evt")
+
+        client.complete_registration.assert_not_called()

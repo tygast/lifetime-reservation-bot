@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import time
 import traceback
-
-import requests
+from collections.abc import Callable
+from typing import Protocol
 
 from lifetime_bot.api import LifetimeAPIClient
-from lifetime_bot.auth import DirectAPIAuthenticator
-from lifetime_bot.config import BotConfig
+from lifetime_bot.auth import AuthenticatedSession, DirectAPIAuthenticator
+from lifetime_bot.config import BotConfig, NotificationMethod
 from lifetime_bot.errors import LifetimeAPIError
-from lifetime_bot.models import RegistrationResult, SessionTokens
+from lifetime_bot.models import RegistrationResult
 from lifetime_bot.notifications import EmailNotificationService, SMSNotificationService
 from lifetime_bot.notifier import NotificationCoordinator, NotificationDispatchResult
 from lifetime_bot.reservations import ReservationService
@@ -21,17 +21,49 @@ HTTP_TIMEOUT_SECONDS = 10.0
 NOTIFICATION_TIMEOUT_SECONDS = 5.0
 
 
+class Authenticator(Protocol):
+    """Boundary for member authentication."""
+
+    def login(self, username: str, password: str) -> AuthenticatedSession: ...
+
+
+class Notifier(Protocol):
+    """Boundary for fan-out notification delivery."""
+
+    def send(
+        self,
+        subject: str,
+        message: str,
+        *,
+        method: NotificationMethod,
+    ) -> NotificationDispatchResult: ...
+
+
+APIClientFactory = Callable[[AuthenticatedSession, float], LifetimeAPIClient]
+ReservationServiceFactory = Callable[[LifetimeAPIClient], ReservationService]
+
+
 class LifetimeReservationBot:
-    """Orchestrates direct auth → schedule lookup → API-driven reservation."""
+    """Orchestrates direct auth, schedule lookup, reservation, and notification."""
 
-    def __init__(self, config: BotConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: BotConfig | None = None,
+        *,
+        authenticator: Authenticator | None = None,
+        notifier: Notifier | None = None,
+        api_client_factory: APIClientFactory | None = None,
+        reservation_service_factory: ReservationServiceFactory | None = None,
+    ) -> None:
         self.config = config or BotConfig.from_env()
-        self.email_service = EmailNotificationService(self.config.email)
-        self.sms_service = SMSNotificationService(self.config.sms)
-        self.authenticator = DirectAPIAuthenticator(timeout=HTTP_TIMEOUT_SECONDS)
-        self.api_session: requests.Session | None = None
-
-    # -- Public entry point --------------------------------------------------
+        self.authenticator = authenticator or DirectAPIAuthenticator(
+            timeout=HTTP_TIMEOUT_SECONDS
+        )
+        self.notifier = notifier or _build_default_notifier(self.config)
+        self.api_client_factory = api_client_factory or _build_api_client
+        self.reservation_service_factory = (
+            reservation_service_factory or ReservationService
+        )
 
     def reserve_class(self) -> RegistrationResult:
         """Run the full auth → find class → reserve flow. Raises on failure."""
@@ -41,18 +73,17 @@ class LifetimeReservationBot:
 
         try:
             auth_started = time.perf_counter()
-            tokens = self._login_via_api()
+            authenticated = self.authenticator.login(
+                self.config.username,
+                self.config.password,
+            )
             print(f"Auth completed in {time.perf_counter() - auth_started:.2f}s.")
         except Exception as exc:
             self._report_failure(exc, class_details, phase="login")
             raise
 
-        client = LifetimeAPIClient(
-            tokens,
-            session=self.api_session,
-            timeout=HTTP_TIMEOUT_SECONDS,
-        )
-        reservation_service = ReservationService(client)
+        client = self.api_client_factory(authenticated, HTTP_TIMEOUT_SECONDS)
+        reservation_service = self.reservation_service_factory(client)
         try:
             lookup_started = time.perf_counter()
             event = reservation_service.find_target_event(
@@ -94,28 +125,14 @@ class LifetimeReservationBot:
         print(f"Reservation flow finished in {time.perf_counter() - started:.2f}s.")
         return result
 
-    # -- Notifications -------------------------------------------------------
-
     def send_notification(
         self, subject: str, message: str
     ) -> NotificationDispatchResult:
-        return self._notification_coordinator().send(
+        return self.notifier.send(
             subject,
             message,
             method=self.config.notification_method,
         )
-
-    # -- Direct API auth ----------------------------------------------------
-
-    def _login_via_api(self) -> SessionTokens:
-        authenticated = self.authenticator.login(
-            self.config.username,
-            self.config.password,
-        )
-        self.api_session = authenticated.session
-        return authenticated.tokens
-
-    # -- Reporting helpers ---------------------------------------------------
 
     def _get_target_date(self) -> str:
         return get_target_date(
@@ -176,9 +193,20 @@ class LifetimeReservationBot:
             f"Error ({error_type}): {exc!s}",
         )
 
-    def _notification_coordinator(self) -> NotificationCoordinator:
-        return NotificationCoordinator(
-            email_service=self.email_service,
-            sms_service=self.sms_service,
-            timeout_seconds=NOTIFICATION_TIMEOUT_SECONDS,
-        )
+
+def _build_api_client(
+    authenticated: AuthenticatedSession, timeout: float
+) -> LifetimeAPIClient:
+    return LifetimeAPIClient(
+        authenticated.tokens,
+        session=authenticated.session,
+        timeout=timeout,
+    )
+
+
+def _build_default_notifier(config: BotConfig) -> NotificationCoordinator:
+    return NotificationCoordinator(
+        email_service=EmailNotificationService(config.email),
+        sms_service=SMSNotificationService(config.sms),
+        timeout_seconds=NOTIFICATION_TIMEOUT_SECONDS,
+    )

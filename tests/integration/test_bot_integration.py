@@ -25,8 +25,8 @@ class TestBotInitialization:
             assert bot.config.club.name == "San Antonio 281"
             assert bot.config.target_class.name == "Pickleball"
 
-            assert bot.email_service is not None
-            assert bot.sms_service is not None
+            assert bot.authenticator is not None
+            assert bot.notifier is not None
 
     def test_bot_with_explicit_config(self, bot_config: BotConfig) -> None:
         """Bot stores the explicit config without side effects."""
@@ -71,16 +71,25 @@ class TestBotNotificationIntegration:
         assert kwargs["from_"] == bot_config.sms.from_number
         assert kwargs["to"] == bot_config.sms.to_number
 
-    def test_bot_sends_both_notifications(self, bot_config: BotConfig) -> None:
+    @patch("lifetime_bot.notifications.email.smtplib.SMTP")
+    @patch("lifetime_bot.notifications.sms.Client")
+    def test_bot_sends_both_notifications(
+        self,
+        mock_client_class: MagicMock,
+        mock_smtp: MagicMock,
+        bot_config: BotConfig,
+    ) -> None:
         bot_config.notification_method = "both"
+        mock_server = MagicMock()
+        mock_smtp.return_value.__enter__.return_value = mock_server
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
         bot = LifetimeReservationBot(config=bot_config)
-        bot.email_service.send = MagicMock(return_value=True)
-        bot.sms_service.send = MagicMock(return_value=True)
 
         bot.send_notification("Test Subject", "Test Message")
 
-        bot.email_service.send.assert_called_once_with("Test Subject", "Test Message")
-        bot.sms_service.send.assert_called_once_with("Test Subject", "Test Message")
+        mock_server.send_message.assert_called_once()
+        mock_client.messages.create.assert_called_once()
 
 
 class TestBotClassDetails:
