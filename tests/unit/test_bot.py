@@ -326,6 +326,49 @@ class TestReserveClassHappyPath:
         subject = bot.email_service.send.call_args.args[0]
         assert "Waitlist" in subject
 
+    def test_fetches_required_documents_when_register_omits_them(
+        self, bot: LifetimeReservationBot, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            bot, "_login_and_extract_tokens", lambda: SAMPLE_TOKENS
+        )
+        event = ClassEvent(
+            event_id="evt",
+            name="Pickleball Open Play: All Levels",
+            instructor="John D",
+            start=datetime(2026, 4, 29, 19, 0, tzinfo=timezone.utc),
+            end=datetime(2026, 4, 29, 21, 0, tzinfo=timezone.utc),
+            location="San Antonio 281",
+            spots_available=5,
+            raw={},
+        )
+        client = MagicMock()
+        client.list_classes.return_value = [event]
+        client.register.return_value = RegistrationResult(
+            registration_id=101,
+            status="pending",
+            needs_complete=True,
+            required_documents=None,
+            raw={},
+        )
+        client.get_registration_info.return_value = {"agreement": {"agreementId": 77}}
+
+        bot.config.target_class.name = "Pickleball"
+        bot.config.target_class.instructor = "John D"
+        bot.config.target_class.start_time = "7:00 PM"
+        bot.config.target_class.end_time = "9:00 PM"
+        bot.config.target_class.date = "2026-04-29"
+        bot.config.run_on_schedule = False
+
+        with patch("lifetime_bot.bot.LifetimeAPIClient", return_value=client):
+            assert bot.reserve_class() is True
+
+        client.complete_registration.assert_called_once_with(
+            101, accepted_documents=[77]
+        )
+        subject = bot.email_service.send.call_args.args[0]
+        assert subject == "Lifetime Bot - Reserved"
+
     def test_skips_post_when_already_reserved(
         self, bot: LifetimeReservationBot, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -365,7 +408,10 @@ class TestReserveClassHappyPath:
         assert "Already Reserved" in subject
 
     def test_treats_duplicate_post_error_as_already_reserved(
-        self, bot: LifetimeReservationBot, monkeypatch: pytest.MonkeyPatch
+        self,
+        bot: LifetimeReservationBot,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         monkeypatch.setattr(
             bot, "_login_and_extract_tokens", lambda: SAMPLE_TOKENS
@@ -387,7 +433,9 @@ class TestReserveClassHappyPath:
             {"registeredMembers": []},
             {"registeredMembers": [{"id": 110137193, "name": "Tyler"}]},
         ]
-        client.register.side_effect = LifetimeAPIError("POST /event returned 500")
+        client.register.side_effect = LifetimeAPIError(
+            "POST /event returned 500", status_code=500
+        )
 
         bot.config.target_class.name = "Pickleball"
         bot.config.target_class.instructor = ""
@@ -403,6 +451,88 @@ class TestReserveClassHappyPath:
         client.complete_registration.assert_not_called()
         subject = bot.email_service.send.call_args.args[0]
         assert "Already Reserved" in subject
+        captured = capsys.readouterr().out
+        assert "POST /event failed (POST /event returned 500)" in captured
+
+    def test_raises_post_error_when_follow_up_still_not_registered(
+        self, bot: LifetimeReservationBot, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            bot, "_login_and_extract_tokens", lambda: SAMPLE_TOKENS
+        )
+        event = ClassEvent(
+            event_id="evt",
+            name="Pickleball Open Play: All Levels",
+            instructor="",
+            start=datetime(2026, 4, 29, 19, 0, tzinfo=timezone.utc),
+            end=datetime(2026, 4, 29, 21, 0, tzinfo=timezone.utc),
+            location="Indoor Pickleball Court 3, San Antonio 281",
+            spots_available=5,
+            raw={},
+        )
+        client = MagicMock()
+        client.member_id = 110137193
+        client.list_classes.return_value = [event]
+        client.get_registration_info.side_effect = [
+            {"registeredMembers": []},
+            {"registeredMembers": []},
+        ]
+        client.register.side_effect = LifetimeAPIError(
+            "POST /event returned 500", status_code=500
+        )
+
+        bot.config.target_class.name = "Pickleball"
+        bot.config.target_class.instructor = ""
+        bot.config.target_class.start_time = "7:00 PM"
+        bot.config.target_class.end_time = "9:00 PM"
+        bot.config.target_class.date = "2026-04-29"
+        bot.config.run_on_schedule = False
+
+        with patch("lifetime_bot.bot.LifetimeAPIClient", return_value=client), pytest.raises(
+            LifetimeAPIError, match="POST /event returned 500"
+        ):
+            bot.reserve_class()
+
+    def test_raises_when_required_documents_cannot_be_found(
+        self, bot: LifetimeReservationBot, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            bot, "_login_and_extract_tokens", lambda: SAMPLE_TOKENS
+        )
+        event = ClassEvent(
+            event_id="evt",
+            name="Pickleball Open Play: All Levels",
+            instructor="John D",
+            start=datetime(2026, 4, 29, 19, 0, tzinfo=timezone.utc),
+            end=datetime(2026, 4, 29, 21, 0, tzinfo=timezone.utc),
+            location="San Antonio 281",
+            spots_available=5,
+            raw={},
+        )
+        client = MagicMock()
+        client.list_classes.return_value = [event]
+        client.register.return_value = RegistrationResult(
+            registration_id=101,
+            status="pending",
+            needs_complete=True,
+            required_documents=None,
+            raw={},
+        )
+        client.get_registration_info.return_value = {}
+
+        bot.config.target_class.name = "Pickleball"
+        bot.config.target_class.instructor = "John D"
+        bot.config.target_class.start_time = "7:00 PM"
+        bot.config.target_class.end_time = "9:00 PM"
+        bot.config.target_class.date = "2026-04-29"
+        bot.config.run_on_schedule = False
+
+        with patch("lifetime_bot.bot.LifetimeAPIClient", return_value=client), pytest.raises(
+            LifetimeAPIError, match="no waiver/document ids"
+        ):
+            bot.reserve_class()
+
+        client.complete_registration.assert_not_called()
 
 
 class TestReserveClassFailures:
@@ -484,3 +614,80 @@ class TestDirectAPIAuth:
 
         assert bot._login_and_extract_tokens() == SAMPLE_TOKENS
         direct.assert_called_once_with()
+
+    @pytest.mark.parametrize(
+        ("login_payload", "profile_payload", "expected"),
+        [
+            (
+                {"message": "Denied", "status": "1", "token": "auth-token", "ssoId": "sso-id"},
+                {"jwt": "profile-jwt", "memberDetails": {"memberId": 110137193}},
+                "Direct member login was rejected",
+            ),
+            (
+                {"message": "Success", "status": "0", "token": "", "ssoId": "sso-id"},
+                {"jwt": "profile-jwt", "memberDetails": {"memberId": 110137193}},
+                "expected token and ssoId",
+            ),
+            (
+                {"message": "Success", "status": "0", "token": "auth-token", "ssoId": ""},
+                {"jwt": "profile-jwt", "memberDetails": {"memberId": 110137193}},
+                "expected token and ssoId",
+            ),
+            (
+                {"message": "Success", "status": "0", "token": "auth-token", "ssoId": "sso-id"},
+                {"jwt": "profile-jwt", "memberDetails": {}},
+                "memberDetails.memberId",
+            ),
+        ],
+    )
+    def test_login_via_api_rejects_bad_payloads(
+        self,
+        bot: LifetimeReservationBot,
+        monkeypatch: pytest.MonkeyPatch,
+        login_payload: dict[str, object],
+        profile_payload: dict[str, object],
+        expected: str,
+    ) -> None:
+        session = MagicMock()
+        session.post.return_value = _response(login_payload)
+        session.get.return_value = _response(profile_payload)
+        monkeypatch.setattr("lifetime_bot.bot.requests.Session", MagicMock(return_value=session))
+
+        with pytest.raises(LifetimeAPIError, match=expected):
+            bot._login_via_api()
+
+    def test_login_via_api_reports_http_error_before_json_parse(
+        self, bot: LifetimeReservationBot, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        session = MagicMock()
+        response = MagicMock()
+        response.ok = False
+        response.status_code = 503
+        response.text = "<html>upstream error</html>"
+        response.json.side_effect = ValueError("no json")
+        session.post.return_value = response
+        monkeypatch.setattr("lifetime_bot.bot.requests.Session", MagicMock(return_value=session))
+
+        with pytest.raises(LifetimeAPIError, match=r"auth/v2/login returned 503"):
+            bot._login_via_api()
+
+
+class TestExistingRegistrationDetection:
+    def test_returns_none_on_registration_info_404(self, bot: LifetimeReservationBot) -> None:
+        client = MagicMock()
+        client.get_registration_info.side_effect = LifetimeAPIError(
+            "not found", status_code=404
+        )
+
+        assert bot._detect_existing_registration(client, "evt", context="preflight") is None
+
+    def test_raises_on_registration_info_server_error(
+        self, bot: LifetimeReservationBot
+    ) -> None:
+        client = MagicMock()
+        client.get_registration_info.side_effect = LifetimeAPIError(
+            "server blew up", status_code=500
+        )
+
+        with pytest.raises(LifetimeAPIError, match="server blew up"):
+            bot._detect_existing_registration(client, "evt", context="preflight")

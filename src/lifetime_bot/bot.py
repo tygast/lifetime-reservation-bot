@@ -100,28 +100,46 @@ class LifetimeReservationBot:
                         f"status={result.status or 'unknown'} "
                         f"needs_complete={result.needs_complete}"
                     )
-                except LifetimeAPIError:
+                except LifetimeAPIError as exc:
+                    print(
+                        f"POST /event failed ({exc}); "
+                        "checking registration info before treating it as fatal."
+                    )
+                    if exc.status_code not in {409, 500}:
+                        raise
                     result = self._detect_existing_registration(
                         client, event.event_id, context="post-error check"
                     )
                     if result is None:
-                        raise
+                        raise exc
                     print(
-                        "POST /event failed, but follow-up registration info "
-                        "shows the class is already reserved."
+                        "POST /event returned an already-booked style error, "
+                        "and follow-up registration info shows the class is already reserved."
                     )
 
             if result.needs_complete:
-                documents = result.required_documents or self._fetch_required_documents(
-                    client, event.event_id
-                )
+                documents = result.required_documents
+                if documents is None:
+                    documents = self._fetch_required_documents(client, event.event_id)
+                if documents is None:
+                    raise LifetimeAPIError(
+                        "Registration requires completion, but no waiver/document ids "
+                        "were available."
+                    )
                 client.complete_registration(
                     result.registration_id,
                     accepted_documents=documents,
                 )
+                result = RegistrationResult(
+                    registration_id=result.registration_id,
+                    status="complete",
+                    needs_complete=False,
+                    required_documents=documents,
+                    raw=result.raw,
+                )
                 print(
                     f"PUT /complete succeeded "
-                    f"(accepted documents: {documents or []})."
+                    f"(accepted documents: {documents})."
                 )
             print(
                 "Reservation API phase completed in "
@@ -264,18 +282,23 @@ class LifetimeReservationBot:
     def _json_or_error(
         self, response: requests.Response, *, context: str
     ) -> dict[str, Any]:
+        if not response.ok:
+            raise LifetimeAPIError(
+                f"{context} returned {response.status_code}: {response.text[:300]}",
+                status_code=response.status_code,
+            )
         try:
             payload = response.json()
         except ValueError as exc:
             raise LifetimeAPIError(
-                f"{context} returned non-JSON response: {response.text[:300]}"
+                f"{context} returned non-JSON response: {response.text[:300]}",
+                status_code=response.status_code,
             ) from exc
-        if not response.ok:
-            raise LifetimeAPIError(
-                f"{context} returned {response.status_code}: {response.text[:300]}"
-            )
         if not isinstance(payload, dict):
-            raise LifetimeAPIError(f"{context} returned unexpected payload: {payload!r}")
+            raise LifetimeAPIError(
+                f"{context} returned unexpected payload: {payload!r}",
+                status_code=response.status_code,
+            )
         return payload
 
     # -- API phase -----------------------------------------------------------
@@ -342,8 +365,11 @@ class LifetimeReservationBot:
         try:
             info = client.get_registration_info(event_id)
         except LifetimeAPIError as exc:
+            if exc.status_code == 404:
+                print(f"Could not fetch registration info during {context}: {exc}")
+                return None
             print(f"Could not fetch registration info during {context}: {exc}")
-            return None
+            raise
 
         registered = info.get("registeredMembers")
         unregistered = info.get("unregisteredMembers")
@@ -406,7 +432,7 @@ class LifetimeReservationBot:
                 "Lifetime Bot - Added to Waitlist",
                 f"The class was full — you were added to the waitlist.\n\n{class_details}",
             )
-        if result.was_reserved or not result.needs_complete:
+        if result.was_reserved:
             return (
                 "Lifetime Bot - Reserved",
                 f"Your class was successfully reserved!\n\n{class_details}",

@@ -86,6 +86,11 @@ class TestSessionTokens:
         with pytest.raises(LifetimeAPIError):
             _ = bad.member_id
 
+    def test_member_id_raises_on_invalid_payload_encoding(self) -> None:
+        bad = SessionTokens(jwe="x", profile="a.not-json.sig", ssoid="y")
+        with pytest.raises(LifetimeAPIError, match="valid JWT payload"):
+            _ = bad.member_id
+
 
 class TestClientHeaders:
     def test_session_headers_include_all_auth_fields(self) -> None:
@@ -415,6 +420,34 @@ class TestCompleteRegistration:
         client = LifetimeAPIClient(SAMPLE_TOKENS, session=session)
 
         assert client.complete_registration(42) == {}
+
+    def test_raises_on_non_json_non_empty_success_body(self) -> None:
+        session = MagicMock(spec=requests.Session)
+        session.headers = requests.structures.CaseInsensitiveDict()
+        response = MagicMock()
+        response.ok = True
+        response.status_code = 200
+        response.text = "<html>proxy error</html>"
+        response.json.side_effect = requests.exceptions.JSONDecodeError(
+            "Expecting value", "", 0
+        )
+        session.request.return_value = response
+
+        client = LifetimeAPIClient(SAMPLE_TOKENS, session=session)
+
+        with pytest.raises(LifetimeAPIError, match="returned non-JSON response"):
+            client.complete_registration(42)
+
+
+class TestCancelRegistration:
+    def test_deletes_registration_endpoint(self) -> None:
+        client, request_mock = _client_with_mock(_FakeResponse())
+
+        client.cancel_registration(42)
+
+        method, url = request_mock.call_args.args
+        assert method == "DELETE"
+        assert url == f"{API_BASE}/sys/registrations/V3/ux/event/42"
 
 
 class TestMatchClass:

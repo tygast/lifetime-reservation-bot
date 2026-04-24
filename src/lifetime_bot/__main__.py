@@ -6,8 +6,15 @@ import os
 import sys
 import time
 
+import requests
+
+from lifetime_bot.api import LifetimeAPIError
 from lifetime_bot.bot import LifetimeReservationBot
 from lifetime_bot.utils.timing import get_target_utc_time, wait_until_utc
+
+
+class RetryableReservationError(RuntimeError):
+    """Raised when the bot returns a retryable falsey result."""
 
 
 def run_bot() -> bool:
@@ -35,7 +42,7 @@ def run_bot() -> bool:
                 print(f"Run completed in {time.perf_counter() - started:.2f}s")
                 print("Class reservation completed successfully!")
                 return True
-            raise RuntimeError(
+            raise RetryableReservationError(
                 "Reservation attempt returned False without raising an error"
             )
         except Exception as e:
@@ -45,7 +52,8 @@ def run_bot() -> bool:
                 f"{time.perf_counter() - attempt_started:.2f}s with error: {e!s}"
             )
 
-            if retry_count >= max_retries:
+            should_retry = retry_count < max_retries and _should_retry(e)
+            if not should_retry:
                 try:
                     if bot and hasattr(bot, "send_notification"):
                         bot.send_notification(
@@ -55,6 +63,7 @@ def run_bot() -> bool:
                         )
                 except Exception as notify_error:
                     print(f"Could not send failure notification: {notify_error}")
+                break
             else:
                 print(
                     f"Waiting {retry_delay:g} seconds before retry "
@@ -63,6 +72,16 @@ def run_bot() -> bool:
                 time.sleep(retry_delay)
 
     print(f"Run failed after {time.perf_counter() - started:.2f}s")
+    return False
+
+
+def _should_retry(exc: BaseException) -> bool:
+    if isinstance(exc, RetryableReservationError):
+        return True
+    if isinstance(exc, (requests.ConnectionError, requests.Timeout)):
+        return True
+    if isinstance(exc, LifetimeAPIError):
+        return exc.is_retryable
     return False
 
 

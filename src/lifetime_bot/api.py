@@ -9,6 +9,7 @@ expect the legacy browser-style ``x-ltf-*`` headers on mutating calls.
 from __future__ import annotations
 
 import base64
+import binascii
 import json
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -22,6 +23,14 @@ API_BASE = "https://api.lifetimefitness.com"
 
 class LifetimeAPIError(Exception):
     """Raised when a Life Time API call returns an unexpected response."""
+
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+    @property
+    def is_retryable(self) -> bool:
+        return self.status_code is not None and self.status_code >= 500
 
 
 @dataclass(frozen=True)
@@ -53,7 +62,12 @@ class SessionTokens:
             ) from exc
 
         padding = (-len(payload)) % 4
-        claims = json.loads(base64.urlsafe_b64decode(payload + "=" * padding))
+        try:
+            claims = json.loads(base64.urlsafe_b64decode(payload + "=" * padding))
+        except (UnicodeDecodeError, binascii.Error, json.JSONDecodeError) as exc:
+            raise LifetimeAPIError(
+                "x-ltf-profile is not a valid JWT payload"
+            ) from exc
         if "memberId" not in claims:
             raise LifetimeAPIError("x-ltf-profile claims did not include memberId")
         return int(claims["memberId"])
@@ -175,7 +189,10 @@ class LifetimeAPIClient:
                 f"{API_BASE}/ux/web-schedules/v2/schedules/classes",
                 params=params,
             )
-            payload = response.json()
+            payload = _response_json(
+                response,
+                f"GET {API_BASE}/ux/web-schedules/v2/schedules/classes",
+            )
             events.extend(_parse_class_events(payload))
 
             if page >= _extract_total_pages(response):
@@ -188,7 +205,16 @@ class LifetimeAPIClient:
             "GET",
             f"{API_BASE}/ux/web-schedules/v2/events/{event_id}/registration",
         )
-        return response.json()
+        payload = _response_json(
+            response,
+            f"GET {API_BASE}/ux/web-schedules/v2/events/{event_id}/registration",
+        )
+        if not isinstance(payload, dict):
+            raise LifetimeAPIError(
+                "Registration info response was not an object",
+                status_code=response.status_code,
+            )
+        return payload
 
     def register(
         self,
@@ -206,7 +232,16 @@ class LifetimeAPIClient:
             f"{API_BASE}/sys/registrations/V3/ux/event",
             json=body,
         )
-        return _parse_registration_result(response.json())
+        payload = _response_json(
+            response,
+            f"POST {API_BASE}/sys/registrations/V3/ux/event",
+        )
+        if not isinstance(payload, dict):
+            raise LifetimeAPIError(
+                "POST /event response was not an object",
+                status_code=response.status_code,
+            )
+        return _parse_registration_result(payload)
 
     def complete_registration(
         self,
@@ -227,10 +262,16 @@ class LifetimeAPIClient:
         )
         if not response.text.strip():
             return {}
-        try:
-            return response.json()
-        except ValueError:
-            return {}
+        payload = _response_json(
+            response,
+            f"PUT {API_BASE}/sys/registrations/V3/ux/event/{registration_id}/complete",
+        )
+        if not isinstance(payload, dict):
+            raise LifetimeAPIError(
+                "PUT /complete response was not an object",
+                status_code=response.status_code,
+            )
+        return payload
 
     def cancel_registration(self, registration_id: int) -> None:
         """DELETE a registration. Useful for CI cleanup after smoke tests."""
@@ -248,7 +289,8 @@ class LifetimeAPIClient:
         if not response.ok:
             raise LifetimeAPIError(
                 f"{method} {url} returned {response.status_code}: "
-                f"{response.text[:300]}"
+                f"{response.text[:300]}",
+                status_code=response.status_code,
             )
         return response
 
@@ -484,6 +526,16 @@ def _parse_registration_result(payload: dict[str, Any]) -> RegistrationResult:
         required_documents=_extract_required_documents(payload),
         raw=payload,
     )
+
+
+def _response_json(response: requests.Response, context: str) -> Any:
+    try:
+        return response.json()
+    except ValueError as exc:
+        raise LifetimeAPIError(
+            f"{context} returned non-JSON response: {response.text[:300]}",
+            status_code=response.status_code,
+        ) from exc
 
 
 def _first_int(payload: dict[str, Any], *keys: str) -> int | None:

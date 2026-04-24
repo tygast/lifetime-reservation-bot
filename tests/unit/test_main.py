@@ -5,7 +5,10 @@ from __future__ import annotations
 import os
 from unittest.mock import MagicMock, patch
 
+import requests
+
 from lifetime_bot import __main__ as main_module
+from lifetime_bot.api import LifetimeAPIError
 
 
 class TestRunBot:
@@ -31,7 +34,7 @@ class TestRunBot:
         self, bot_class: MagicMock, sleep_mock: MagicMock
     ) -> None:
         first = MagicMock()
-        first.reserve_class.side_effect = RuntimeError("boom")
+        first.reserve_class.side_effect = requests.Timeout("boom")
         second = MagicMock()
         second.reserve_class.return_value = True
         bot_class.side_effect = [first, second]
@@ -73,9 +76,9 @@ class TestRunBot:
         self, bot_class: MagicMock, sleep_mock: MagicMock
     ) -> None:
         first = MagicMock()
-        first.reserve_class.side_effect = RuntimeError("boom")
+        first.reserve_class.side_effect = requests.Timeout("boom")
         second = MagicMock()
-        second.reserve_class.side_effect = RuntimeError("still boom")
+        second.reserve_class.side_effect = requests.Timeout("still boom")
         bot_class.side_effect = [first, second]
 
         with patch.dict(
@@ -91,6 +94,28 @@ class TestRunBot:
         subject, body = second.send_notification.call_args.args
         assert subject == "Lifetime Bot - All Attempts Failed"
         assert "still boom" in body
+
+    @patch("lifetime_bot.__main__.time.sleep")
+    @patch("lifetime_bot.__main__.LifetimeReservationBot")
+    def test_does_not_retry_non_retryable_api_errors(
+        self, bot_class: MagicMock, sleep_mock: MagicMock
+    ) -> None:
+        bot = MagicMock()
+        bot.reserve_class.side_effect = LifetimeAPIError(
+            "bad target date", status_code=400
+        )
+        bot_class.return_value = bot
+
+        with patch.dict(
+            os.environ,
+            {"MAX_RETRIES": "3", "RETRY_DELAY_SECONDS": "5"},
+            clear=False,
+        ):
+            assert main_module.run_bot() is False
+
+        bot_class.assert_called_once_with()
+        sleep_mock.assert_not_called()
+        bot.send_notification.assert_called_once()
 
 
 class TestMain:
