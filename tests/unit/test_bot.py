@@ -38,9 +38,7 @@ class BotHarness:
     bot: LifetimeReservationBot
     authenticator: MagicMock
     notifier: MagicMock
-    client: MagicMock
     reservation_service: MagicMock
-    api_client_factory: MagicMock
     reservation_service_factory: MagicMock
 
 
@@ -73,24 +71,19 @@ def _build_harness(bot_config: BotConfig) -> BotHarness:
         subject="subject",
         attempts=(),
     )
-    client = MagicMock()
     reservation_service = MagicMock()
-    api_client_factory = MagicMock(return_value=client)
     reservation_service_factory = MagicMock(return_value=reservation_service)
     bot = LifetimeReservationBot(
         bot_config,
         authenticator=authenticator,
         notifier=notifier,
-        api_client_factory=api_client_factory,
         reservation_service_factory=reservation_service_factory,
     )
     return BotHarness(
         bot=bot,
         authenticator=authenticator,
         notifier=notifier,
-        client=client,
         reservation_service=reservation_service,
-        api_client_factory=api_client_factory,
         reservation_service_factory=reservation_service_factory,
     )
 
@@ -151,8 +144,7 @@ class TestReserveClass:
             harness.bot.config.username,
             harness.bot.config.password,
         )
-        harness.api_client_factory.assert_called_once()
-        harness.reservation_service_factory.assert_called_once_with(harness.client)
+        harness.reservation_service_factory.assert_called_once()
         harness.reservation_service.find_target_event.assert_called_once_with(
             club_name="San Antonio 281",
             target_class=harness.bot.config.target_class,

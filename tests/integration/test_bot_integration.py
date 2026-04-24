@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from unittest.mock import MagicMock, patch
 
-from lifetime_bot.bot import LifetimeReservationBot
+from lifetime_bot.bootstrap import create_bot
 from lifetime_bot.config import BotConfig
 from lifetime_bot.messages import format_class_details
 
@@ -19,7 +19,7 @@ class TestBotInitialization:
     ) -> None:
         """Bot loads its config from the environment without side effects."""
         with patch.dict(os.environ, env_vars, clear=True):
-            bot = LifetimeReservationBot(config=BotConfig.from_env(reload_env=False))
+            bot = create_bot(config=BotConfig.from_env(reload_env=False))
 
             assert bot.config.username == "test@example.com"
             assert bot.config.password == "testpassword"
@@ -31,7 +31,7 @@ class TestBotInitialization:
 
     def test_bot_with_explicit_config(self, bot_config: BotConfig) -> None:
         """Bot stores the explicit config without side effects."""
-        bot = LifetimeReservationBot(config=bot_config)
+        bot = create_bot(config=bot_config)
         assert bot.config is bot_config
 
 
@@ -46,7 +46,7 @@ class TestBotNotificationIntegration:
         mock_smtp.return_value.__enter__.return_value = mock_server
 
         bot_config.notification_method = "email"
-        bot = LifetimeReservationBot(config=bot_config)
+        bot = create_bot(config=bot_config)
 
         bot.send_notification("Test Subject", "Test Message")
 
@@ -62,7 +62,7 @@ class TestBotNotificationIntegration:
         mock_client_class.return_value = mock_client
 
         bot_config.notification_method = "sms"
-        bot = LifetimeReservationBot(config=bot_config)
+        bot = create_bot(config=bot_config)
 
         bot.send_notification("Test Subject", "Test Message")
 
@@ -85,7 +85,7 @@ class TestBotNotificationIntegration:
         mock_smtp.return_value.__enter__.return_value = mock_server
         mock_client = MagicMock()
         mock_client_class.return_value = mock_client
-        bot = LifetimeReservationBot(config=bot_config)
+        bot = create_bot(config=bot_config)
 
         bot.send_notification("Test Subject", "Test Message")
 

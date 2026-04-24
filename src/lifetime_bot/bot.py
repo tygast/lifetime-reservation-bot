@@ -7,19 +7,13 @@ import traceback
 from collections.abc import Callable
 from typing import Protocol
 
-from lifetime_bot.api import LifetimeAPIClient
-from lifetime_bot.auth import AuthenticatedSession, DirectAPIAuthenticator
-from lifetime_bot.config import BotConfig, NotificationMethod
+from lifetime_bot.auth import AuthenticatedSession
+from lifetime_bot.config import BotConfig, ClassConfig, NotificationMethod
 from lifetime_bot.errors import LifetimeAPIError
 from lifetime_bot.messages import describe_failure, describe_outcome, format_class_details
-from lifetime_bot.models import RegistrationResult
-from lifetime_bot.notifications import EmailNotificationService, SMSNotificationService
-from lifetime_bot.notifier import NotificationCoordinator, NotificationDispatchResult
-from lifetime_bot.reservations import ReservationService
+from lifetime_bot.models import ClassEvent, RegistrationResult
+from lifetime_bot.notifier import NotificationDispatchResult
 from lifetime_bot.utils.timing import get_target_date
-
-HTTP_TIMEOUT_SECONDS = 10.0
-NOTIFICATION_TIMEOUT_SECONDS = 5.0
 
 
 class Authenticator(Protocol):
@@ -40,8 +34,21 @@ class Notifier(Protocol):
     ) -> NotificationDispatchResult: ...
 
 
-APIClientFactory = Callable[[AuthenticatedSession, float], LifetimeAPIClient]
-ReservationServiceFactory = Callable[[LifetimeAPIClient], ReservationService]
+class ReservationServiceLike(Protocol):
+    """Boundary for class lookup and reservation lifecycle operations."""
+
+    def find_target_event(
+        self,
+        *,
+        club_name: str,
+        target_class: ClassConfig,
+        target_date: str,
+    ) -> ClassEvent | None: ...
+
+    def reserve_event(self, event_id: str) -> RegistrationResult: ...
+
+
+ReservationServiceFactory = Callable[[AuthenticatedSession], ReservationServiceLike]
 
 
 class LifetimeReservationBot:
@@ -49,22 +56,16 @@ class LifetimeReservationBot:
 
     def __init__(
         self,
-        config: BotConfig | None = None,
+        config: BotConfig,
         *,
-        authenticator: Authenticator | None = None,
-        notifier: Notifier | None = None,
-        api_client_factory: APIClientFactory | None = None,
-        reservation_service_factory: ReservationServiceFactory | None = None,
+        authenticator: Authenticator,
+        notifier: Notifier,
+        reservation_service_factory: ReservationServiceFactory,
     ) -> None:
-        self.config = config or BotConfig.from_env()
-        self.authenticator = authenticator or DirectAPIAuthenticator(
-            timeout=HTTP_TIMEOUT_SECONDS
-        )
-        self.notifier = notifier or _build_default_notifier(self.config)
-        self.api_client_factory = api_client_factory or _build_api_client
-        self.reservation_service_factory = (
-            reservation_service_factory or ReservationService
-        )
+        self.config = config
+        self.authenticator = authenticator
+        self.notifier = notifier
+        self.reservation_service_factory = reservation_service_factory
 
     def reserve_class(self) -> RegistrationResult:
         """Run the full auth → find class → reserve flow. Raises on failure."""
@@ -83,8 +84,7 @@ class LifetimeReservationBot:
             self._report_failure(exc, class_details, phase="login")
             raise
 
-        client = self.api_client_factory(authenticated, HTTP_TIMEOUT_SECONDS)
-        reservation_service = self.reservation_service_factory(client)
+        reservation_service = self.reservation_service_factory(authenticated)
         try:
             lookup_started = time.perf_counter()
             event = reservation_service.find_target_event(
@@ -149,21 +149,3 @@ class LifetimeReservationBot:
         print(traceback.format_exc())
         subject, body = describe_failure(exc, class_details=class_details, phase=phase)
         self.send_notification(subject, body)
-
-
-def _build_api_client(
-    authenticated: AuthenticatedSession, timeout: float
-) -> LifetimeAPIClient:
-    return LifetimeAPIClient(
-        authenticated.tokens,
-        session=authenticated.session,
-        timeout=timeout,
-    )
-
-
-def _build_default_notifier(config: BotConfig) -> NotificationCoordinator:
-    return NotificationCoordinator(
-        email_service=EmailNotificationService(config.email),
-        sms_service=SMSNotificationService(config.sms),
-        timeout_seconds=NOTIFICATION_TIMEOUT_SECONDS,
-    )
