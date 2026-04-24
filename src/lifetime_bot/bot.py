@@ -11,7 +11,7 @@ from lifetime_bot.api import LifetimeAPIClient
 from lifetime_bot.auth import DirectAPIAuthenticator
 from lifetime_bot.config import BotConfig
 from lifetime_bot.errors import LifetimeAPIError
-from lifetime_bot.models import ClassEvent, RegistrationResult, SessionTokens
+from lifetime_bot.models import RegistrationResult, SessionTokens
 from lifetime_bot.notifications import EmailNotificationService, SMSNotificationService
 from lifetime_bot.notifier import NotificationCoordinator, NotificationDispatchResult
 from lifetime_bot.reservations import ReservationService
@@ -52,9 +52,14 @@ class LifetimeReservationBot:
             session=self.api_session,
             timeout=HTTP_TIMEOUT_SECONDS,
         )
+        reservation_service = ReservationService(client)
         try:
             lookup_started = time.perf_counter()
-            event = self._find_target_event(client, target_date)
+            event = reservation_service.find_target_event(
+                club_name=self.config.club.name,
+                target_class=self.config.target_class,
+                target_date=target_date,
+            )
             if event is None:
                 raise LifetimeAPIError(
                     f"Target class not found in schedule for {target_date}. "
@@ -71,7 +76,7 @@ class LifetimeReservationBot:
             )
 
             registration_started = time.perf_counter()
-            result = self._reserve_event(client, event.event_id)
+            result = reservation_service.reserve_event(event.event_id)
             print(
                 "Reservation API phase completed in "
                 f"{time.perf_counter() - registration_started:.2f}s."
@@ -109,35 +114,6 @@ class LifetimeReservationBot:
         )
         self.api_session = authenticated.session
         return authenticated.tokens
-
-    # -- API phase -----------------------------------------------------------
-
-    def _find_target_event(
-        self, client: LifetimeAPIClient, target_date: str
-    ) -> ClassEvent | None:
-        return self._reservation_service(client).find_target_event(
-            club_name=self.config.club.name,
-            target_class=self.config.target_class,
-            target_date=target_date,
-        )
-
-    def _reserve_event(
-        self, client: LifetimeAPIClient, event_id: str
-    ) -> RegistrationResult:
-        return self._reservation_service(client).reserve_event(event_id)
-
-    def _fetch_required_documents(
-        self, client: LifetimeAPIClient, event_id: str
-    ) -> list[int] | None:
-        return self._reservation_service(client).fetch_required_documents(event_id)
-
-    def _detect_existing_registration(
-        self, client: LifetimeAPIClient, event_id: str, *, context: str
-    ) -> RegistrationResult | None:
-        return self._reservation_service(client).detect_existing_registration(
-            event_id,
-            context=context,
-        )
 
     # -- Reporting helpers ---------------------------------------------------
 
@@ -199,9 +175,6 @@ class LifetimeReservationBot:
             f"{phase.title()} failed:\n\n{class_details}\n\n"
             f"Error ({error_type}): {exc!s}",
         )
-
-    def _reservation_service(self, client: LifetimeAPIClient) -> ReservationService:
-        return ReservationService(client)
 
     def _notification_coordinator(self) -> NotificationCoordinator:
         return NotificationCoordinator(
