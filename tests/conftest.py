@@ -73,6 +73,7 @@ def bot_config(
         email=email_config,
         sms=sms_config,
         notification_method="email",
+        auth_mode="auto",
         run_on_schedule=False,
         headless=True,
     )

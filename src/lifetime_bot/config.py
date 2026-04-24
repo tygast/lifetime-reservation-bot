@@ -9,6 +9,10 @@ from typing import Literal
 from dotenv import load_dotenv
 
 NotificationMethod = Literal["email", "sms", "both"]
+AuthMode = Literal["auto", "direct", "browser"]
+NO_INSTRUCTOR_VALUES = frozenset(
+    {"", "any", "ignore", "ignored", "n/a", "na", "no instructor", "none"}
+)
 
 
 @dataclass
@@ -78,7 +82,9 @@ class ClassConfig:
         """Create ClassConfig from environment variables."""
         return cls(
             name=os.getenv("TARGET_CLASS", ""),
-            instructor=os.getenv("TARGET_INSTRUCTOR", ""),
+            instructor=_normalize_instructor_filter(
+                os.getenv("TARGET_INSTRUCTOR", "")
+            ),
             date=os.getenv("TARGET_DATE", ""),
             start_time=os.getenv("START_TIME", ""),
             end_time=os.getenv("END_TIME", "10:00 AM"),
@@ -113,6 +119,7 @@ class BotConfig:
     email: EmailConfig
     sms: SMSConfig
     notification_method: NotificationMethod
+    auth_mode: AuthMode
     run_on_schedule: bool
     headless: bool
     login_url: str = "https://my.lifetime.life/login.html"
@@ -135,6 +142,10 @@ class BotConfig:
         if notification_method not in ("email", "sms", "both"):
             notification_method = "email"
 
+        auth_mode = os.getenv("AUTH_MODE", "auto").lower()
+        if auth_mode not in ("auto", "direct", "browser"):
+            auth_mode = "auto"
+
         return cls(
             username=os.getenv("LIFETIME_USERNAME", ""),
             password=os.getenv("LIFETIME_PASSWORD", ""),
@@ -143,6 +154,14 @@ class BotConfig:
             email=EmailConfig.from_env(),
             sms=SMSConfig.from_env(),
             notification_method=notification_method,  # type: ignore[arg-type]
+            auth_mode=auth_mode,  # type: ignore[arg-type]
             run_on_schedule=os.getenv("RUN_ON_SCHEDULE", "false").lower() == "true",
             headless=os.getenv("HEADLESS", "false").lower() == "true",
         )
+
+
+def _normalize_instructor_filter(value: str) -> str:
+    cleaned = value.strip()
+    if cleaned.lower() in NO_INSTRUCTOR_VALUES:
+        return ""
+    return cleaned

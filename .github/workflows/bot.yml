@@ -79,6 +79,7 @@ jobs:
           echo "LIFETIME_USERNAME=${{ secrets.LIFETIME_USERNAME }}" >> .env
           echo "LIFETIME_PASSWORD=${{ secrets.LIFETIME_PASSWORD }}" >> .env
           echo "LIFETIME_CLUB_NAME=${{ vars.LIFETIME_CLUB_NAME }}" >> .env
+          echo "AUTH_MODE=direct" >> .env
           echo "HEADLESS=${{ vars.HEADLESS }}" >> .env
           echo "RUN_ON_SCHEDULE=${{ vars.RUN_ON_SCHEDULE }}" >> .env
           echo "TARGET_CLASS=${{ vars.TARGET_CLASS }}" >> .env
@@ -105,6 +106,7 @@ jobs:
           LIFETIME_USERNAME: ${{ secrets.LIFETIME_USERNAME }}
           LIFETIME_PASSWORD: ${{ secrets.LIFETIME_PASSWORD }}
           LIFETIME_CLUB_NAME: ${{ vars.LIFETIME_CLUB_NAME }}
+          AUTH_MODE: direct
           HEADLESS: ${{ vars.HEADLESS }}
           RUN_ON_SCHEDULE: ${{ vars.RUN_ON_SCHEDULE }}
           TARGET_CLASS: ${{ vars.TARGET_CLASS }}

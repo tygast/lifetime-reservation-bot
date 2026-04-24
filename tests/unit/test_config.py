@@ -29,6 +29,7 @@ class TestEmailConfig:
 
     def test_from_env(self, mock_env: dict[str, str]) -> None:
         """Test creating EmailConfig from environment variables."""
+        assert mock_env
         config = EmailConfig.from_env()
         assert config.sender == "test@gmail.com"
         assert config.password == "testpassword123"
@@ -90,6 +91,7 @@ class TestSMSConfig:
 
     def test_from_env(self, mock_env: dict[str, str]) -> None:
         """Test creating SMSConfig from environment variables."""
+        assert mock_env
         config = SMSConfig.from_env()
         assert config.account_sid == "ACtest123456789"
         assert config.auth_token == "test_auth_token"
@@ -163,6 +165,7 @@ class TestClassConfig:
 
     def test_from_env(self, mock_env: dict[str, str]) -> None:
         """Test creating ClassConfig from environment variables."""
+        assert mock_env
         config = ClassConfig.from_env()
         assert config.name == "Pickleball"
         assert config.instructor == "John D"
@@ -180,6 +183,15 @@ class TestClassConfig:
             assert config.start_time == ""
             assert config.end_time == "10:00 AM"
 
+    def test_from_env_normalizes_no_instructor_values(self) -> None:
+        env = {
+            "TARGET_CLASS": "Pickleball",
+            "TARGET_INSTRUCTOR": "none",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            config = ClassConfig.from_env()
+            assert config.instructor == ""
+
 
 class TestClubConfig:
     """Tests for ClubConfig."""
@@ -190,14 +202,16 @@ class TestClubConfig:
 
     def test_from_env(self, mock_env: dict[str, str]) -> None:
         """Test creating ClubConfig from environment variables."""
+        assert mock_env
         config = ClubConfig.from_env()
         assert config.name == "San Antonio 281"
 
     def test_from_env_raises_without_name(self) -> None:
         """Test from_env raises ValueError when name is missing."""
-        with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(ValueError, match="LIFETIME_CLUB_NAME"):
-                ClubConfig.from_env()
+        with patch.dict(os.environ, {}, clear=True), pytest.raises(
+            ValueError, match="LIFETIME_CLUB_NAME"
+        ):
+            ClubConfig.from_env()
 
 
 class TestBotConfig:
@@ -208,18 +222,21 @@ class TestBotConfig:
         assert bot_config.username == "test@example.com"
         assert bot_config.password == "testpassword"
         assert bot_config.notification_method == "email"
+        assert bot_config.auth_mode == "auto"
         assert bot_config.run_on_schedule is False
         assert bot_config.headless is True
         assert bot_config.login_url == "https://my.lifetime.life/login.html"
 
     def test_from_env(self, mock_env: dict[str, str]) -> None:
         """Test creating BotConfig from environment variables."""
+        assert mock_env
         config = BotConfig.from_env(reload_env=False)
         assert config.username == "test@example.com"
         assert config.password == "testpassword"
         assert config.club.name == "San Antonio 281"
         assert config.target_class.name == "Pickleball"
         assert config.notification_method == "email"
+        assert config.auth_mode == "auto"
         assert config.run_on_schedule is False
         assert config.headless is True
 
@@ -274,3 +291,25 @@ class TestBotConfig:
         with patch.dict(os.environ, env, clear=True):
             config = BotConfig.from_env(reload_env=False)
             assert config.headless is False
+
+    def test_from_env_auth_mode_direct(self) -> None:
+        env = {
+            "LIFETIME_USERNAME": "test@example.com",
+            "LIFETIME_PASSWORD": "testpassword",
+            "LIFETIME_CLUB_NAME": "Test Club",
+            "AUTH_MODE": "direct",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            config = BotConfig.from_env(reload_env=False)
+            assert config.auth_mode == "direct"
+
+    def test_from_env_auth_mode_invalid_defaults_to_auto(self) -> None:
+        env = {
+            "LIFETIME_USERNAME": "test@example.com",
+            "LIFETIME_PASSWORD": "testpassword",
+            "LIFETIME_CLUB_NAME": "Test Club",
+            "AUTH_MODE": "not-real",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            config = BotConfig.from_env(reload_env=False)
+            assert config.auth_mode == "auto"
