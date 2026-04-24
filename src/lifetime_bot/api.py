@@ -50,13 +50,22 @@ class LifetimeAPIClient:
         self.session = session or requests.Session()
         headers = {
             "accept": "application/json, text/plain, */*",
+            "accept-language": "en-US,en;q=0.9",
             "content-type": "application/json",
             "ocp-apim-subscription-key": SUBSCRIPTION_KEY,
             "origin": "https://my.lifetime.life",
+            "pragma": "no-cache",
             "referer": "https://my.lifetime.life/",
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "cross-site",
+            "user-agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/147.0.0.0 Safari/537.36"
+            ),
         }
         if tokens.is_direct_auth:
-            headers["X-LTF-CT"] = tokens.jwe
             headers["X-LTF-JWE"] = tokens.jwe
             if tokens.profile:
                 headers["X-LTF-PROFILE"] = tokens.profile
