@@ -13,12 +13,14 @@ import requests
 from lifetime_bot.api import (
     API_BASE,
     SUBSCRIPTION_KEY,
-    ClassEvent,
     LifetimeAPIClient,
-    LifetimeAPIError,
+    match_class,
+)
+from lifetime_bot.errors import LifetimeAPIError
+from lifetime_bot.models import (
+    ClassEvent,
     RegistrationOutcome,
     SessionTokens,
-    match_class,
 )
 
 

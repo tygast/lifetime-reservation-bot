@@ -14,16 +14,18 @@ import requests
 from lifetime_bot.api import (
     API_BASE,
     SUBSCRIPTION_KEY,
-    ClassEvent,
     LifetimeAPIClient,
-    LifetimeAPIError,
-    RegistrationOutcome,
-    RegistrationResult,
-    SessionTokens,
     extract_required_document_ids,
     match_class,
 )
 from lifetime_bot.config import BotConfig
+from lifetime_bot.errors import LifetimeAPIError
+from lifetime_bot.models import (
+    ClassEvent,
+    RegistrationOutcome,
+    RegistrationResult,
+    SessionTokens,
+)
 from lifetime_bot.notifications import EmailNotificationService, SMSNotificationService
 from lifetime_bot.utils.timing import get_target_date
 

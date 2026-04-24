@@ -10,15 +10,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from lifetime_bot.api import (
+from lifetime_bot.bot import LifetimeReservationBot
+from lifetime_bot.config import BotConfig
+from lifetime_bot.errors import LifetimeAPIError
+from lifetime_bot.models import (
     ClassEvent,
-    LifetimeAPIError,
     RegistrationOutcome,
     RegistrationResult,
     SessionTokens,
 )
-from lifetime_bot.bot import LifetimeReservationBot
-from lifetime_bot.config import BotConfig
 
 
 def _profile_jwt(member_id: int = 110137193) -> str:

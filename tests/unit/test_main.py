@@ -8,7 +8,8 @@ from unittest.mock import MagicMock, patch
 import requests
 
 from lifetime_bot import __main__ as main_module
-from lifetime_bot.api import LifetimeAPIError, RegistrationOutcome, RegistrationResult
+from lifetime_bot.errors import LifetimeAPIError
+from lifetime_bot.models import RegistrationOutcome, RegistrationResult
 
 
 def _result(outcome: RegistrationOutcome) -> RegistrationResult:

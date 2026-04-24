@@ -8,8 +8,8 @@ import time
 
 import requests
 
-from lifetime_bot.api import LifetimeAPIError
 from lifetime_bot.bot import LifetimeReservationBot
+from lifetime_bot.errors import LifetimeAPIError
 from lifetime_bot.utils.timing import get_target_utc_time, wait_until_utc
 
 
