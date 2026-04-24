@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import threading
 import time
 import traceback
-from dataclasses import dataclass
-from typing import Any, Callable
 
 import requests
 
@@ -16,20 +13,12 @@ from lifetime_bot.config import BotConfig
 from lifetime_bot.errors import LifetimeAPIError
 from lifetime_bot.models import ClassEvent, RegistrationResult, SessionTokens
 from lifetime_bot.notifications import EmailNotificationService, SMSNotificationService
+from lifetime_bot.notifier import NotificationCoordinator, NotificationDispatchResult
 from lifetime_bot.reservations import ReservationService
 from lifetime_bot.utils.timing import get_target_date
 
 HTTP_TIMEOUT_SECONDS = 10.0
 NOTIFICATION_TIMEOUT_SECONDS = 5.0
-
-
-@dataclass(frozen=True)
-class TimedAttemptResult:
-    """Outcome of a bounded callback execution."""
-
-    completed: bool
-    succeeded: bool
-    error: str | None = None
 
 
 class LifetimeReservationBot:
@@ -102,51 +91,14 @@ class LifetimeReservationBot:
 
     # -- Notifications -------------------------------------------------------
 
-    def send_notification(self, subject: str, message: str) -> None:
-        method = self.config.notification_method
-        print(f"Notification phase started: {subject}")
-        if method in {"email", "both"}:
-            started = time.perf_counter()
-            result = _run_with_timeout(
-                lambda: self.email_service.send(subject, message),
-                timeout_seconds=NOTIFICATION_TIMEOUT_SECONDS,
-            )
-            if not result.completed:
-                print(
-                    f"Email notification timed out after "
-                    f"{NOTIFICATION_TIMEOUT_SECONDS:.2f}s: {subject}"
-                )
-            elif result.error:
-                print(f"Email notification failed: {result.error}")
-            elif result.succeeded:
-                print(f"Notification sent via email: {subject}")
-            else:
-                print(f"Email notification service reported failure: {subject}")
-            print(
-                f"Email notification attempt completed in "
-                f"{time.perf_counter() - started:.2f}s."
-            )
-        if method in {"sms", "both"}:
-            started = time.perf_counter()
-            result = _run_with_timeout(
-                lambda: self.sms_service.send(subject, message),
-                timeout_seconds=NOTIFICATION_TIMEOUT_SECONDS,
-            )
-            if not result.completed:
-                print(
-                    f"SMS notification timed out after "
-                    f"{NOTIFICATION_TIMEOUT_SECONDS:.2f}s: {subject}"
-                )
-            elif result.error:
-                print(f"SMS notification failed: {result.error}")
-            elif result.succeeded:
-                print(f"Notification sent via SMS: {subject}")
-            else:
-                print(f"SMS notification service reported failure: {subject}")
-            print(
-                f"SMS notification attempt completed in "
-                f"{time.perf_counter() - started:.2f}s."
-            )
+    def send_notification(
+        self, subject: str, message: str
+    ) -> NotificationDispatchResult:
+        return self._notification_coordinator().send(
+            subject,
+            message,
+            method=self.config.notification_method,
+        )
 
     # -- Direct API auth ----------------------------------------------------
 
@@ -251,28 +203,9 @@ class LifetimeReservationBot:
     def _reservation_service(self, client: LifetimeAPIClient) -> ReservationService:
         return ReservationService(client)
 
-
-def _run_with_timeout(
-    callback: Callable[[], bool], *, timeout_seconds: float
-) -> TimedAttemptResult:
-    result: dict[str, Any] = {"done": False, "value": False, "error": None}
-
-    def _target() -> None:
-        try:
-            result["value"] = bool(callback())
-        except Exception as exc:  # pragma: no cover - exercised through caller logs
-            result["error"] = f"{type(exc).__name__}: {exc}"
-            result["value"] = False
-        finally:
-            result["done"] = True
-
-    thread = threading.Thread(target=_target, daemon=True)
-    thread.start()
-    thread.join(timeout_seconds)
-    if not result["done"]:
-        return TimedAttemptResult(completed=False, succeeded=False)
-    return TimedAttemptResult(
-        completed=True,
-        succeeded=bool(result["value"]),
-        error=result["error"],
-    )
+    def _notification_coordinator(self) -> NotificationCoordinator:
+        return NotificationCoordinator(
+            email_service=self.email_service,
+            sms_service=self.sms_service,
+            timeout_seconds=NOTIFICATION_TIMEOUT_SECONDS,
+        )

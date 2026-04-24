@@ -16,12 +16,20 @@ from lifetime_bot.models import (
     RegistrationResult,
     SessionTokens,
 )
+from lifetime_bot.notifier import (
+    NotificationAttempt,
+    NotificationCoordinator,
+    NotificationDispatchResult,
+)
 from lifetime_bot.reservations import ReservationService
 
 __all__ = [
     "LifetimeReservationBot",
     "DirectAPIAuthenticator",
     "ReservationService",
+    "NotificationCoordinator",
+    "NotificationAttempt",
+    "NotificationDispatchResult",
     "BotConfig",
     "EmailConfig",
     "SMSConfig",
