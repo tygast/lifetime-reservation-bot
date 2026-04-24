@@ -11,6 +11,7 @@ from lifetime_bot.api import LifetimeAPIClient
 from lifetime_bot.auth import AuthenticatedSession, DirectAPIAuthenticator
 from lifetime_bot.config import BotConfig, NotificationMethod
 from lifetime_bot.errors import LifetimeAPIError
+from lifetime_bot.messages import describe_failure, describe_outcome, format_class_details
 from lifetime_bot.models import RegistrationResult
 from lifetime_bot.notifications import EmailNotificationService, SMSNotificationService
 from lifetime_bot.notifier import NotificationCoordinator, NotificationDispatchResult
@@ -69,7 +70,7 @@ class LifetimeReservationBot:
         """Run the full auth → find class → reserve flow. Raises on failure."""
         started = time.perf_counter()
         target_date = self._get_target_date()
-        class_details = self._get_class_details(target_date)
+        class_details = format_class_details(self.config, target_date)
 
         try:
             auth_started = time.perf_counter()
@@ -116,7 +117,7 @@ class LifetimeReservationBot:
             self._report_failure(exc, class_details, phase="reservation")
             raise
 
-        subject, body = self._describe_outcome(result, class_details)
+        subject, body = describe_outcome(result, class_details)
         print(f"Reservation outcome: {subject.removeprefix('Lifetime Bot - ')}.")
         print(
             f"Reservation flow core completed in {time.perf_counter() - started:.2f}s."
@@ -140,58 +141,14 @@ class LifetimeReservationBot:
             self.config.target_class.date,
         )
 
-    def _get_class_details(self, target_date: str) -> str:
-        tc = self.config.target_class
-        instructor = tc.instructor or "(ignored)"
-        return (
-            f"Class: {tc.name}\n"
-            f"Instructor: {instructor}\n"
-            f"Date: {target_date}\n"
-            f"Time: {tc.start_time} - {tc.end_time}\n"
-            f"Club: {self.config.club.name}"
-        )
-
-    def _describe_outcome(
-        self, result: RegistrationResult, class_details: str
-    ) -> tuple[str, str]:
-        if result.was_already_reserved:
-            return (
-                "Lifetime Bot - Already Reserved",
-                "This class was already on your account, so no new reservation "
-                f"was submitted.\n\n{class_details}",
-            )
-        if result.was_waitlisted:
-            return (
-                "Lifetime Bot - Added to Waitlist",
-                f"The class was full — you were added to the waitlist.\n\n{class_details}",
-            )
-        if result.was_reserved:
-            return (
-                "Lifetime Bot - Reserved",
-                f"Your class was successfully reserved!\n\n{class_details}",
-            )
-        status = result.display_status
-        return (
-            f"Lifetime Bot - Registered ({status})",
-            f"Registration completed (status: {status}).\n\n{class_details}",
-        )
-
     def _report_failure(
         self, exc: BaseException, class_details: str, *, phase: str
     ) -> None:
         error_type = type(exc).__name__
         print(f"{phase.title()} failed ({error_type}): {exc}")
         print(traceback.format_exc())
-        subject = (
-            "Lifetime Bot - Login Failed"
-            if phase == "login"
-            else "Lifetime Bot - Failure"
-        )
-        self.send_notification(
-            subject,
-            f"{phase.title()} failed:\n\n{class_details}\n\n"
-            f"Error ({error_type}): {exc!s}",
-        )
+        subject, body = describe_failure(exc, class_details=class_details, phase=phase)
+        self.send_notification(subject, body)
 
 
 def _build_api_client(

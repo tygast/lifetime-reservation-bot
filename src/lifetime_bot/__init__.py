@@ -10,6 +10,7 @@ from lifetime_bot.auth import AuthenticatedSession, DirectAPIAuthenticator
 from lifetime_bot.bot import LifetimeReservationBot
 from lifetime_bot.config import BotConfig, EmailConfig, SMSConfig
 from lifetime_bot.errors import LifetimeAPIError
+from lifetime_bot.messages import describe_failure, describe_outcome, format_class_details
 from lifetime_bot.models import (
     ClassEvent,
     RegistrationOutcome,
@@ -36,6 +37,9 @@ __all__ = [
     "SMSConfig",
     "LifetimeAPIClient",
     "LifetimeAPIError",
+    "format_class_details",
+    "describe_outcome",
+    "describe_failure",
     "SessionTokens",
     "ClassEvent",
     "RegistrationOutcome",

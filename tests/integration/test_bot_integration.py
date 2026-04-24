@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from lifetime_bot.bot import LifetimeReservationBot
 from lifetime_bot.config import BotConfig
+from lifetime_bot.messages import format_class_details
 
 
 class TestBotInitialization:
@@ -96,8 +97,7 @@ class TestBotClassDetails:
     """Integration tests for class details generation."""
 
     def test_class_details_formatting(self, bot_config: BotConfig) -> None:
-        bot = LifetimeReservationBot(config=bot_config)
-        details = bot._get_class_details("2026-01-20")
+        details = format_class_details(bot_config, "2026-01-20")
 
         assert "Class: Pickleball" in details
         assert "Instructor: John D" in details

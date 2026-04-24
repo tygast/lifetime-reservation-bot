@@ -127,51 +127,6 @@ class TestSendNotification:
         )
 
 
-class TestGetClassDetails:
-    def test_includes_config_fields(self, harness: BotHarness) -> None:
-        details = harness.bot._get_class_details("2026-04-29")
-        assert "Class: Pickleball" in details
-        assert "Instructor: John D" in details
-        assert "Date: 2026-04-29" in details
-        assert "Time: 9:00 AM - 10:00 AM" in details
-        assert "Club: San Antonio 281" in details
-
-
-class TestDescribeOutcome:
-    def test_reserved_outcome(self, harness: BotHarness) -> None:
-        subject, body = harness.bot._describe_outcome(
-            _result(RegistrationOutcome.RESERVED), "details"
-        )
-        assert subject == "Lifetime Bot - Reserved"
-        assert "successfully reserved" in body
-        assert "details" in body
-
-    def test_waitlisted_outcome(self, harness: BotHarness) -> None:
-        subject, body = harness.bot._describe_outcome(
-            _result(RegistrationOutcome.WAITLISTED), "details"
-        )
-        assert subject == "Lifetime Bot - Added to Waitlist"
-        assert "waitlist" in body.lower()
-
-    def test_already_reserved_outcome(self, harness: BotHarness) -> None:
-        subject, body = harness.bot._describe_outcome(
-            _result(RegistrationOutcome.ALREADY_RESERVED), "details"
-        )
-        assert subject == "Lifetime Bot - Already Reserved"
-        assert "already on your account" in body
-
-    def test_unknown_status_falls_back(self, harness: BotHarness) -> None:
-        subject, body = harness.bot._describe_outcome(
-            _result(
-                RegistrationOutcome.PENDING_COMPLETION,
-                raw_status="pending",
-                needs_complete=True,
-            ),
-            "details",
-        )
-        assert "Registered" in subject
-
-
 class TestReserveClass:
     def test_end_to_end_reserved(self, harness: BotHarness) -> None:
         event = MagicMock(
