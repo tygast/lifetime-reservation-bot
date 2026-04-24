@@ -4,21 +4,21 @@ from __future__ import annotations
 
 from lifetime_bot.api import LifetimeAPIClient
 from lifetime_bot.auth import AuthenticatedSession, DirectAPIAuthenticator
-from lifetime_bot.bot import LifetimeReservationBot
 from lifetime_bot.config import BotConfig
 from lifetime_bot.notifications import EmailNotificationService, SMSNotificationService
 from lifetime_bot.notifier import NotificationCoordinator
+from lifetime_bot.orchestrator import ReservationOrchestrator
 from lifetime_bot.reservations import ReservationService
 
 HTTP_TIMEOUT_SECONDS = 10.0
 NOTIFICATION_TIMEOUT_SECONDS = 5.0
 
 
-def create_bot(config: BotConfig | None = None) -> LifetimeReservationBot:
+def create_bot(config: BotConfig | None = None) -> ReservationOrchestrator:
     """Build a production-ready reservation bot with concrete collaborators."""
 
     config = config or BotConfig.from_env()
-    return LifetimeReservationBot(
+    return ReservationOrchestrator(
         config=config,
         authenticator=DirectAPIAuthenticator(timeout=HTTP_TIMEOUT_SECONDS),
         notifier=create_notifier(config),

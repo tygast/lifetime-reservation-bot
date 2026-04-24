@@ -1,4 +1,4 @@
-"""Unit tests for LifetimeReservationBot orchestration."""
+"""Unit tests for ReservationOrchestrator orchestration."""
 
 from __future__ import annotations
 
@@ -11,11 +11,11 @@ from unittest.mock import MagicMock
 import pytest
 
 from lifetime_bot.auth import AuthenticatedSession
-from lifetime_bot.bot import LifetimeReservationBot
 from lifetime_bot.config import BotConfig
 from lifetime_bot.errors import LifetimeAPIError
 from lifetime_bot.models import RegistrationOutcome, RegistrationResult, SessionTokens
 from lifetime_bot.notifier import NotificationDispatchResult
+from lifetime_bot.orchestrator import ReservationOrchestrator
 
 
 def _profile_jwt(member_id: int = 110137193) -> str:
@@ -35,7 +35,7 @@ SAMPLE_TOKENS = SessionTokens(
 
 @dataclass
 class BotHarness:
-    bot: LifetimeReservationBot
+    bot: ReservationOrchestrator
     authenticator: MagicMock
     notifier: MagicMock
     reservation_service: MagicMock
@@ -73,7 +73,7 @@ def _build_harness(bot_config: BotConfig) -> BotHarness:
     )
     reservation_service = MagicMock()
     reservation_service_factory = MagicMock(return_value=reservation_service)
-    bot = LifetimeReservationBot(
+    bot = ReservationOrchestrator(
         bot_config,
         authenticator=authenticator,
         notifier=notifier,

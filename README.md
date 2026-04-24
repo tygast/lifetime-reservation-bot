@@ -28,7 +28,7 @@ lifetime-reservation-bot/
 │   └── lifetime_bot/
 │       ├── __init__.py          # Package exports
 │       ├── __main__.py          # CLI entry point with retry + scheduling
-│       ├── bot.py               # Orchestrator: auth -> schedule -> reserve -> notify
+│       ├── orchestrator.py      # Orchestrator: auth -> schedule -> reserve -> notify
 │       ├── api.py               # HTTP client for api.lifetimefitness.com
 │       ├── config.py            # Configuration dataclasses
 │       ├── notifications/
@@ -487,7 +487,7 @@ python -m ruff format src/
 The codebase follows a modular architecture:
 
 - **`config.py`**: Dataclasses for configuration (`BotConfig`, `EmailConfig`, `SMSConfig`, `ClassConfig`, `ClubConfig`)
-- **`bot.py`**: Main `LifetimeReservationBot` class with all reservation logic
+- **`orchestrator.py`**: Main `ReservationOrchestrator` class with reservation coordination logic
 - **`notifications/`**: Abstract `NotificationService` with email and SMS implementations
 - **`utils/timing.py`**: UTC time waiting and date calculation utilities
 - **`__main__.py`**: CLI entry point with retry logic

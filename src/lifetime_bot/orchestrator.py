@@ -1,4 +1,4 @@
-"""Top-level orchestrator for the Life Time reservation bot."""
+"""Application orchestrator for the Life Time reservation bot."""
 
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ class ReservationServiceLike(Protocol):
 ReservationServiceFactory = Callable[[AuthenticatedSession], ReservationServiceLike]
 
 
-class LifetimeReservationBot:
+class ReservationOrchestrator:
     """Orchestrates direct auth, schedule lookup, reservation, and notification."""
 
     def __init__(
