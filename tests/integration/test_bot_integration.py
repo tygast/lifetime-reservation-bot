@@ -16,7 +16,7 @@ class TestBotInitialization:
     def test_bot_initializes_from_env(
         self, _mock_load_dotenv: MagicMock, env_vars: dict[str, str]
     ) -> None:
-        """Bot loads its config from the environment without creating a driver."""
+        """Bot loads its config from the environment without side effects."""
         with patch.dict(os.environ, env_vars, clear=True):
             bot = LifetimeReservationBot(config=BotConfig.from_env(reload_env=False))
 
@@ -25,17 +25,13 @@ class TestBotInitialization:
             assert bot.config.club.name == "San Antonio 281"
             assert bot.config.target_class.name == "Pickleball"
 
-            # Driver is not created until login; notifications are.
-            assert bot.driver is None
-            assert bot.wait is None
             assert bot.email_service is not None
             assert bot.sms_service is not None
 
     def test_bot_with_explicit_config(self, bot_config: BotConfig) -> None:
-        """Bot stores the explicit config without booting a browser."""
+        """Bot stores the explicit config without side effects."""
         bot = LifetimeReservationBot(config=bot_config)
         assert bot.config is bot_config
-        assert bot.driver is None
 
 
 class TestBotNotificationIntegration:

@@ -9,7 +9,6 @@ from typing import Literal
 from dotenv import load_dotenv
 
 NotificationMethod = Literal["email", "sms", "both"]
-AuthMode = Literal["auto", "direct", "browser"]
 NO_INSTRUCTOR_VALUES = frozenset(
     {"", "any", "ignore", "ignored", "n/a", "na", "no instructor", "none"}
 )
@@ -119,10 +118,7 @@ class BotConfig:
     email: EmailConfig
     sms: SMSConfig
     notification_method: NotificationMethod
-    auth_mode: AuthMode
     run_on_schedule: bool
-    headless: bool
-    login_url: str = "https://my.lifetime.life/login.html"
 
     @classmethod
     def from_env(cls, reload_env: bool = True) -> BotConfig:
@@ -132,19 +128,13 @@ class BotConfig:
             reload_env: If True, clear and reload environment variables from .env file.
         """
         if reload_env:
-            # Overlay .env onto the existing environment. Do NOT wipe os.environ
-            # first — PATH/HOME/TMPDIR/LD_LIBRARY_PATH are needed by the Chrome
-            # subprocess launched by Selenium, and clearing them crashes Chrome
-            # on first navigation with an empty-message WebDriverException.
+            # Overlay .env onto the existing environment so shell-provided
+            # variables like PATH remain available to the process.
             load_dotenv(override=True)
 
         notification_method = os.getenv("NOTIFICATION_METHOD", "email").lower()
         if notification_method not in ("email", "sms", "both"):
             notification_method = "email"
-
-        auth_mode = os.getenv("AUTH_MODE", "auto").lower()
-        if auth_mode not in ("auto", "direct", "browser"):
-            auth_mode = "auto"
 
         return cls(
             username=os.getenv("LIFETIME_USERNAME", ""),
@@ -154,9 +144,7 @@ class BotConfig:
             email=EmailConfig.from_env(),
             sms=SMSConfig.from_env(),
             notification_method=notification_method,  # type: ignore[arg-type]
-            auth_mode=auth_mode,  # type: ignore[arg-type]
             run_on_schedule=os.getenv("RUN_ON_SCHEDULE", "false").lower() == "true",
-            headless=os.getenv("HEADLESS", "false").lower() == "true",
         )
 
 

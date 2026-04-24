@@ -47,7 +47,7 @@ def _response(
 
 @pytest.fixture
 def bot(bot_config: BotConfig) -> LifetimeReservationBot:
-    """Bot with notifications stubbed and no driver initialized yet."""
+    """Bot with notifications stubbed and no live HTTP session yet."""
     with patch("lifetime_bot.bot.EmailNotificationService"), patch(
         "lifetime_bot.bot.SMSNotificationService"
     ):
@@ -413,74 +413,11 @@ class TestDirectAPIAuth:
         session.post.assert_called_once()
         session.get.assert_called_once()
 
-    def test_auto_mode_falls_back_to_browser_when_direct_auth_fails(
+    def test_login_and_extract_tokens_uses_direct_api(
         self, bot: LifetimeReservationBot, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        bot.config.auth_mode = "auto"
-        monkeypatch.setattr(
-            bot, "_login_via_api", MagicMock(side_effect=LifetimeAPIError("nope"))
-        )
-        browser = MagicMock(return_value=SAMPLE_TOKENS)
-        monkeypatch.setattr(bot, "_login_and_extract_tokens_via_browser", browser)
+        direct = MagicMock(return_value=SAMPLE_TOKENS)
+        monkeypatch.setattr(bot, "_login_via_api", direct)
 
         assert bot._login_and_extract_tokens() == SAMPLE_TOKENS
-        browser.assert_called_once()
-
-    def test_direct_mode_does_not_fallback_to_browser(
-        self, bot: LifetimeReservationBot, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        bot.config.auth_mode = "direct"
-        monkeypatch.setattr(
-            bot, "_login_via_api", MagicMock(side_effect=LifetimeAPIError("bad auth"))
-        )
-        browser = MagicMock(return_value=SAMPLE_TOKENS)
-        monkeypatch.setattr(bot, "_login_and_extract_tokens_via_browser", browser)
-
-        with pytest.raises(LifetimeAPIError):
-            bot._login_and_extract_tokens()
-
-        browser.assert_not_called()
-
-
-class TestExtractTokens:
-    def test_returns_tokens_from_performance_log(
-        self, bot: LifetimeReservationBot
-    ) -> None:
-        driver = MagicMock()
-        bot.driver = driver
-        driver.get_log.return_value = [
-            {
-                "message": json.dumps(
-                    {
-                        "message": {
-                            "method": "Network.requestWillBeSent",
-                            "params": {
-                                "request": {
-                                    "url": "https://api.lifetimefitness.com/ux/anything",
-                                    "headers": {
-                                        "X-Ltf-Jwe": "jwe-value",
-                                        "X-Ltf-Profile": "profile-value",
-                                        "X-Ltf-Ssoid": "ssoid-value",
-                                    },
-                                }
-                            },
-                        }
-                    }
-                )
-            }
-        ]
-        with patch("lifetime_bot.bot.time.sleep"):
-            tokens = bot._extract_tokens(attempts=1)
-
-        assert tokens.jwe == "jwe-value"
-        assert tokens.profile == "profile-value"
-        assert tokens.ssoid == "ssoid-value"
-
-    def test_raises_when_no_api_request_seen(
-        self, bot: LifetimeReservationBot
-    ) -> None:
-        driver = MagicMock()
-        bot.driver = driver
-        driver.get_log.return_value = []
-        with patch("lifetime_bot.bot.time.sleep"), pytest.raises(LifetimeAPIError):
-            bot._extract_tokens(attempts=1)
+        direct.assert_called_once_with()

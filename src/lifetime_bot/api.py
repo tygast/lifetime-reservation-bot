@@ -1,15 +1,9 @@
 """HTTP client for Life Time Fitness's internal API.
 
 The reservation APIs accept Life Time's static APIM key plus per-member auth
-headers. Those auth values can come from either:
-    - the browser SPA after Azure B2C login, or
-    - the direct ``auth/v2/login`` member-login API.
-
-The client adapts its auth headers to the bootstrap path:
-    - browser sessions keep the legacy ``x-ltf-*`` headers
-    - direct member-login sessions also use the browser-style ``x-ltf-*``
-      headers because ``/sys/registrations`` rejects ``Authorization`` on
-      some event flows even when the same token is otherwise valid
+headers. The bot now authenticates exclusively through the direct
+``auth/v2/login`` member-login API, but the reservation endpoints still
+expect the legacy browser-style ``x-ltf-*`` headers on mutating calls.
 """
 
 from __future__ import annotations

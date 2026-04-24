@@ -5,8 +5,6 @@ from __future__ import annotations
 import os
 from unittest.mock import patch
 
-import pytest
-
 from lifetime_bot.config import BotConfig
 
 
@@ -50,7 +48,6 @@ class TestBotConfigIntegration:
             # Verify bot settings
             assert config.notification_method == "email"
             assert config.run_on_schedule is False
-            assert config.headless is True
 
     def test_config_with_schedule_mode(self) -> None:
         """Test configuration with schedule mode enabled."""
@@ -60,7 +57,6 @@ class TestBotConfigIntegration:
             "LIFETIME_CLUB_NAME": "Test Club",
             "LIFETIME_CLUB_STATE": "CA",
             "RUN_ON_SCHEDULE": "true",
-            "HEADLESS": "true",
         }
         with patch.dict(os.environ, env, clear=True):
             config = BotConfig.from_env(reload_env=False)

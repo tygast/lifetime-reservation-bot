@@ -16,20 +16,34 @@ def run_bot() -> bool:
     Returns:
         True if reservation was successful, False otherwise.
     """
-    max_retries = 3
+    max_retries = max(1, int(os.getenv("MAX_RETRIES", "3")))
+    retry_delay = float(os.getenv("RETRY_DELAY_SECONDS", "5"))
     retry_count = 0
+    started = time.perf_counter()
 
     while retry_count < max_retries:
         bot = None
+        attempt_started = time.perf_counter()
         try:
             print(f"Attempt {retry_count + 1}/{max_retries} to reserve class")
             bot = LifetimeReservationBot()
             if bot.reserve_class():
+                print(
+                    f"Attempt {retry_count + 1}/{max_retries} succeeded in "
+                    f"{time.perf_counter() - attempt_started:.2f}s"
+                )
+                print(f"Run completed in {time.perf_counter() - started:.2f}s")
                 print("Class reservation completed successfully!")
                 return True
+            raise RuntimeError(
+                "Reservation attempt returned False without raising an error"
+            )
         except Exception as e:
             retry_count += 1
-            print(f"Attempt {retry_count}/{max_retries} failed with error: {e!s}")
+            print(
+                f"Attempt {retry_count}/{max_retries} failed after "
+                f"{time.perf_counter() - attempt_started:.2f}s with error: {e!s}"
+            )
 
             if retry_count >= max_retries:
                 try:
@@ -42,10 +56,13 @@ def run_bot() -> bool:
                 except Exception as notify_error:
                     print(f"Could not send failure notification: {notify_error}")
             else:
-                retry_delay = 30
-                print(f"Waiting {retry_delay} seconds before retry {retry_count + 1}/{max_retries}...")
+                print(
+                    f"Waiting {retry_delay:g} seconds before retry "
+                    f"{retry_count + 1}/{max_retries}..."
+                )
                 time.sleep(retry_delay)
 
+    print(f"Run failed after {time.perf_counter() - started:.2f}s")
     return False
 
 
@@ -55,6 +72,11 @@ def main() -> int:
     Returns:
         Exit code (0 for success, 1 for failure).
     """
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(line_buffering=True)
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(line_buffering=True)
+
     run_on_schedule = os.getenv("RUN_ON_SCHEDULE", "false").lower() == "true"
 
     if not run_on_schedule:

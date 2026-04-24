@@ -1,22 +1,13 @@
-"""Top-level orchestrator for the Life Time reservation bot.
-
-The bot prefers Life Time's direct member-login APIs for auth because that
-path is stable in CI and does not depend on the browser successfully
-completing the SPA redirect chain. Selenium remains as a fallback when the
-direct auth path fails or is explicitly disabled.
-"""
+"""Top-level orchestrator for the Life Time reservation bot."""
 
 from __future__ import annotations
 
-import json
 import time
 import traceback
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import requests
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
 
 from lifetime_bot.api import (
     API_BASE,
@@ -31,46 +22,44 @@ from lifetime_bot.api import (
 from lifetime_bot.config import BotConfig
 from lifetime_bot.notifications import EmailNotificationService, SMSNotificationService
 from lifetime_bot.utils.timing import get_target_date
-from lifetime_bot.webdriver import create_driver
 
-if TYPE_CHECKING:
-    from selenium.webdriver.remote.webdriver import WebDriver
-    from selenium.webdriver.support.ui import WebDriverWait
-
-
-TOKEN_TRIGGER_URL = "https://my.lifetime.life/my-account/reservations.html"
-TOKEN_SEARCH_HOST = "api.lifetimefitness.com"
-REQUIRED_HEADERS = ("x-ltf-jwe", "x-ltf-profile", "x-ltf-ssoid")
 DIRECT_LOGIN_URL = f"{API_BASE}/auth/v2/login"
 PROFILE_URL = f"{API_BASE}/user-profile/profile"
+HTTP_TIMEOUT_SECONDS = 10.0
 
 
 class LifetimeReservationBot:
-    """Orchestrates login → token extraction → API-driven reservation."""
+    """Orchestrates direct auth → schedule lookup → API-driven reservation."""
 
     def __init__(self, config: BotConfig | None = None) -> None:
         self.config = config or BotConfig.from_env()
         self.email_service = EmailNotificationService(self.config.email)
         self.sms_service = SMSNotificationService(self.config.sms)
-        self.driver: WebDriver | None = None
-        self.wait: WebDriverWait | None = None
         self.api_session: requests.Session | None = None
 
     # -- Public entry point --------------------------------------------------
 
     def reserve_class(self) -> bool:
         """Run the full login → find class → register flow. Raises on failure."""
+        started = time.perf_counter()
         target_date = self._get_target_date()
         class_details = self._get_class_details(target_date)
 
         try:
+            auth_started = time.perf_counter()
             tokens = self._login_and_extract_tokens()
+            print(f"Auth completed in {time.perf_counter() - auth_started:.2f}s.")
         except Exception as exc:
             self._report_failure(exc, class_details, phase="login")
             raise
 
-        client = LifetimeAPIClient(tokens, session=self.api_session)
+        client = LifetimeAPIClient(
+            tokens,
+            session=self.api_session,
+            timeout=HTTP_TIMEOUT_SECONDS,
+        )
         try:
+            lookup_started = time.perf_counter()
             event = self._find_target_event(client, target_date)
             if event is None:
                 raise LifetimeAPIError(
@@ -80,10 +69,14 @@ class LifetimeReservationBot:
                     f"at {self.config.target_class.start_time}-{self.config.target_class.end_time}."
                 )
             print(
+                f"Schedule lookup completed in {time.perf_counter() - lookup_started:.2f}s."
+            )
+            print(
                 f"Matched class '{event.name}' with {event.instructor} at "
                 f"{event.start} (event id {event.event_id})."
             )
 
+            registration_started = time.perf_counter()
             result = self._detect_existing_registration(
                 client, event.event_id, context="preflight"
             )
@@ -118,12 +111,17 @@ class LifetimeReservationBot:
                     f"PUT /complete succeeded "
                     f"(accepted documents: {documents or []})."
                 )
+            print(
+                "Reservation API phase completed in "
+                f"{time.perf_counter() - registration_started:.2f}s."
+            )
         except Exception as exc:
             self._report_failure(exc, class_details, phase="reservation")
             raise
 
         subject, body = self._describe_outcome(result, class_details)
         self.send_notification(subject, body)
+        print(f"Reservation flow finished in {time.perf_counter() - started:.2f}s.")
         return True
 
     # -- Notifications -------------------------------------------------------
@@ -142,28 +140,7 @@ class LifetimeReservationBot:
                 print(f"Failed to send SMS notification: {subject}")
 
     def _login_and_extract_tokens(self) -> SessionTokens:
-        direct_error: Exception | None = None
-        if self.config.auth_mode in {"auto", "direct"}:
-            try:
-                return self._login_via_api()
-            except Exception as exc:
-                direct_error = exc
-                print(f"Direct API auth failed: {exc}")
-                if self.config.auth_mode == "direct":
-                    raise
-
-        if self.config.auth_mode in {"auto", "browser"}:
-            try:
-                return self._login_and_extract_tokens_via_browser()
-            except Exception as exc:
-                if direct_error is None:
-                    raise
-                raise LifetimeAPIError(
-                    "Both auth flows failed. "
-                    f"Direct API auth: {direct_error}. Browser auth: {exc}."
-                ) from exc
-
-        raise LifetimeAPIError(f"Unsupported AUTH_MODE {self.config.auth_mode!r}")
+        return self._login_via_api()
 
     # -- Direct API auth ----------------------------------------------------
 
@@ -177,7 +154,7 @@ class LifetimeReservationBot:
                 "username": self.config.username,
                 "password": self.config.password,
             },
-            timeout=30,
+            timeout=HTTP_TIMEOUT_SECONDS,
         )
         payload = self._json_or_error(login_response, context="auth/v2/login")
         if str(payload.get("status", "")) != "0" or payload.get("message") != "Success":
@@ -196,7 +173,7 @@ class LifetimeReservationBot:
         profile_response = session.get(
             PROFILE_URL,
             headers=self._direct_auth_headers(auth_token=auth_token, ssoid=ssoid),
-            timeout=30,
+            timeout=HTTP_TIMEOUT_SECONDS,
         )
         profile_payload = self._json_or_error(
             profile_response, context="user-profile/profile"
@@ -225,7 +202,7 @@ class LifetimeReservationBot:
             "Content-Type": "application/json; charset=UTF-8",
             "Ocp-Apim-Subscription-Key": SUBSCRIPTION_KEY,
             "Origin": "https://my.lifetime.life",
-            "Referer": self.config.login_url,
+            "Referer": "https://my.lifetime.life/",
             "User-Agent": "Mozilla/5.0",
         }
         if auth_token:
@@ -251,128 +228,6 @@ class LifetimeReservationBot:
         if not isinstance(payload, dict):
             raise LifetimeAPIError(f"{context} returned unexpected payload: {payload!r}")
         return payload
-
-    # -- Selenium phase ------------------------------------------------------
-
-    def _login_and_extract_tokens_via_browser(self) -> SessionTokens:
-        self.api_session = None
-        self.driver, self.wait = create_driver(headless=self.config.headless)
-        try:
-            self.login()
-            return self._extract_tokens()
-        finally:
-            try:
-                if self.driver is not None:
-                    self.driver.quit()
-            except Exception as exc:
-                print(f"Error closing Selenium session: {exc}")
-            finally:
-                self.driver = None
-                self.wait = None
-
-    def login(self) -> None:
-        """Complete the Azure B2C login flow.
-
-        Life Time has shipped both the legacy Azure B2C field ids
-        (``signInName`` / ``password``) and the newer first-party login
-        ids (``account-username`` / ``account-password``). Support both so
-        the browser fallback survives markup flips.
-        """
-        assert self.driver is not None and self.wait is not None
-        self.driver.get(self.config.login_url)
-        self._find_login_input("signInName", "account-username").send_keys(
-            self.config.username
-        )
-        self._find_login_input("password", "account-password").send_keys(
-            self.config.password + Keys.RETURN
-        )
-
-        def _login_complete(driver: WebDriver) -> bool:
-            url = driver.current_url.lower()
-            return (
-                "my.lifetime.life" in url
-                and "/login.html" not in url
-                and "b2clogin.com" not in url
-            )
-
-        self.wait.until(_login_complete)
-        time.sleep(2)
-        print(f"Logged in successfully. Landed on: {self.driver.current_url}")
-
-    def _find_login_input(self, *candidate_ids: str):
-        assert self.driver is not None and self.wait is not None
-
-        def _locate(driver: WebDriver):
-            for candidate_id in candidate_ids:
-                elements = driver.find_elements(By.ID, candidate_id)
-                if elements:
-                    return elements[0]
-            return False
-
-        return self.wait.until(_locate)
-
-    def _extract_tokens(self, *, attempts: int = 3) -> SessionTokens:
-        """Lift x-ltf-jwe / x-ltf-profile / x-ltf-ssoid from the live session.
-
-        The SPA fires authenticated calls to api.lifetimefitness.com on
-        almost every page load. We navigate to a known-authenticated page
-        and then mine the Chrome performance log for the first such
-        request, reading its headers verbatim.
-        """
-        assert self.driver is not None
-        for attempt in range(1, attempts + 1):
-            try:
-                self.driver.get(TOKEN_TRIGGER_URL)
-            except Exception as exc:
-                print(f"Attempt {attempt}: error navigating to trigger page: {exc}")
-            time.sleep(3)
-
-            headers = self._find_lifetime_api_headers()
-            missing = [h for h in REQUIRED_HEADERS if not headers.get(h)]
-            if not missing:
-                return SessionTokens(
-                    jwe=headers["x-ltf-jwe"],
-                    profile=headers["x-ltf-profile"],
-                    ssoid=headers["x-ltf-ssoid"],
-                )
-            print(
-                f"Attempt {attempt}/{attempts}: missing headers {missing} "
-                f"(saw {sorted(headers.keys())})"
-            )
-            time.sleep(2)
-
-        raise LifetimeAPIError(
-            "Could not extract session tokens from browser after "
-            f"{attempts} attempts. The SPA may have changed its auth flow."
-        )
-
-    def _find_lifetime_api_headers(self) -> dict[str, str]:
-        assert self.driver is not None
-        try:
-            entries = self.driver.get_log("performance")
-        except Exception as exc:
-            print(f"Could not read performance log: {exc}")
-            return {}
-
-        best: dict[str, str] = {}
-        for entry in reversed(entries):
-            try:
-                msg = json.loads(entry["message"])["message"]
-            except (json.JSONDecodeError, KeyError, TypeError):
-                continue
-            if msg.get("method") != "Network.requestWillBeSent":
-                continue
-            request = msg.get("params", {}).get("request", {})
-            url = request.get("url", "")
-            if TOKEN_SEARCH_HOST not in url:
-                continue
-            headers = {k.lower(): v for k, v in (request.get("headers") or {}).items()}
-            if all(h in headers for h in REQUIRED_HEADERS):
-                return headers
-            # Keep the best partial match as a fallback for diagnostics.
-            if len(headers) > len(best):
-                best = headers
-        return best
 
     # -- API phase -----------------------------------------------------------
 

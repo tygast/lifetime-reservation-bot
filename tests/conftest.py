@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -73,9 +73,7 @@ def bot_config(
         email=email_config,
         sms=sms_config,
         notification_method="email",
-        auth_mode="auto",
         run_on_schedule=False,
-        headless=True,
     )
 
 
@@ -102,7 +100,6 @@ def env_vars() -> dict[str, str]:
         "SMS_NUMBER": "+15559876543",
         "NOTIFICATION_METHOD": "email",
         "RUN_ON_SCHEDULE": "false",
-        "HEADLESS": "true",
     }
 
 
@@ -111,22 +108,3 @@ def mock_env(env_vars: dict[str, str]):
     """Mock environment variables for testing."""
     with patch.dict(os.environ, env_vars, clear=True):
         yield env_vars
-
-
-@pytest.fixture
-def mock_webdriver():
-    """Create a mock WebDriver."""
-    driver = MagicMock()
-    driver.current_url = "https://my.lifetime.life/test"
-    driver.title = "Test Page"
-    driver.find_elements.return_value = []
-    driver.find_element.return_value = MagicMock()
-    return driver
-
-
-@pytest.fixture
-def mock_wait():
-    """Create a mock WebDriverWait."""
-    wait = MagicMock()
-    wait.until.return_value = MagicMock()
-    return wait

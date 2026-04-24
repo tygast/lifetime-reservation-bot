@@ -222,10 +222,7 @@ class TestBotConfig:
         assert bot_config.username == "test@example.com"
         assert bot_config.password == "testpassword"
         assert bot_config.notification_method == "email"
-        assert bot_config.auth_mode == "auto"
         assert bot_config.run_on_schedule is False
-        assert bot_config.headless is True
-        assert bot_config.login_url == "https://my.lifetime.life/login.html"
 
     def test_from_env(self, mock_env: dict[str, str]) -> None:
         """Test creating BotConfig from environment variables."""
@@ -236,9 +233,7 @@ class TestBotConfig:
         assert config.club.name == "San Antonio 281"
         assert config.target_class.name == "Pickleball"
         assert config.notification_method == "email"
-        assert config.auth_mode == "auto"
         assert config.run_on_schedule is False
-        assert config.headless is True
 
     def test_from_env_notification_method_sms(self) -> None:
         """Test notification_method defaults to email for invalid values."""
@@ -278,38 +273,3 @@ class TestBotConfig:
         with patch.dict(os.environ, env, clear=True):
             config = BotConfig.from_env(reload_env=False)
             assert config.run_on_schedule is True
-
-    def test_from_env_headless_false(self) -> None:
-        """Test headless parses 'false' correctly."""
-        env = {
-            "LIFETIME_USERNAME": "test@example.com",
-            "LIFETIME_PASSWORD": "testpassword",
-            "LIFETIME_CLUB_NAME": "Test Club",
-            "LIFETIME_CLUB_STATE": "TX",
-            "HEADLESS": "false",
-        }
-        with patch.dict(os.environ, env, clear=True):
-            config = BotConfig.from_env(reload_env=False)
-            assert config.headless is False
-
-    def test_from_env_auth_mode_direct(self) -> None:
-        env = {
-            "LIFETIME_USERNAME": "test@example.com",
-            "LIFETIME_PASSWORD": "testpassword",
-            "LIFETIME_CLUB_NAME": "Test Club",
-            "AUTH_MODE": "direct",
-        }
-        with patch.dict(os.environ, env, clear=True):
-            config = BotConfig.from_env(reload_env=False)
-            assert config.auth_mode == "direct"
-
-    def test_from_env_auth_mode_invalid_defaults_to_auto(self) -> None:
-        env = {
-            "LIFETIME_USERNAME": "test@example.com",
-            "LIFETIME_PASSWORD": "testpassword",
-            "LIFETIME_CLUB_NAME": "Test Club",
-            "AUTH_MODE": "not-real",
-        }
-        with patch.dict(os.environ, env, clear=True):
-            config = BotConfig.from_env(reload_env=False)
-            assert config.auth_mode == "auto"
