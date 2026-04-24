@@ -9,6 +9,8 @@ from email.mime.text import MIMEText
 from lifetime_bot.config import EmailConfig
 from lifetime_bot.notifications.base import NotificationService
 
+SMTP_TIMEOUT_SECONDS = 5.0
+
 
 class EmailNotificationService(NotificationService):
     """Email notification service using SMTP."""
@@ -46,7 +48,11 @@ class EmailNotificationService(NotificationService):
             msg["Subject"] = subject
             msg.attach(MIMEText(message, "plain"))
 
-            with smtplib.SMTP(self.config.smtp_server, self.config.smtp_port) as server:
+            with smtplib.SMTP(
+                self.config.smtp_server,
+                self.config.smtp_port,
+                timeout=SMTP_TIMEOUT_SECONDS,
+            ) as server:
                 server.starttls()
                 server.login(self.config.sender, self.config.password)
                 server.send_message(msg)

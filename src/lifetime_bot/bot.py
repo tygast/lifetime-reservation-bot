@@ -129,15 +129,25 @@ class LifetimeReservationBot:
     def send_notification(self, subject: str, message: str) -> None:
         method = self.config.notification_method
         if method in {"email", "both"}:
+            started = time.perf_counter()
             if self.email_service.send(subject, message):
                 print(f"Notification sent via email: {subject}")
             else:
                 print(f"Failed to send email notification: {subject}")
+            print(
+                f"Email notification attempt completed in "
+                f"{time.perf_counter() - started:.2f}s."
+            )
         if method in {"sms", "both"}:
+            started = time.perf_counter()
             if self.sms_service.send(subject, message):
                 print(f"Notification sent via SMS: {subject}")
             else:
                 print(f"Failed to send SMS notification: {subject}")
+            print(
+                f"SMS notification attempt completed in "
+                f"{time.perf_counter() - started:.2f}s."
+            )
 
     def _login_and_extract_tokens(self) -> SessionTokens:
         return self._login_via_api()

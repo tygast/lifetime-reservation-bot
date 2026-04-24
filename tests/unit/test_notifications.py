@@ -55,7 +55,9 @@ class TestEmailNotificationService:
 
         assert result is True
         mock_smtp.assert_called_once_with(
-            email_config.smtp_server, email_config.smtp_port
+            email_config.smtp_server,
+            email_config.smtp_port,
+            timeout=5.0,
         )
         mock_server.starttls.assert_called_once()
         mock_server.login.assert_called_once_with(
