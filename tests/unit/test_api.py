@@ -105,6 +105,8 @@ class TestClientHeaders:
         assert headers["x-ltf-profile"] == SAMPLE_TOKENS.profile
         assert headers["x-ltf-ssoid"] == "C_abc123"
         assert headers["origin"] == "https://my.lifetime.life"
+        assert headers["accept-language"] == "en-US,en;q=0.9"
+        assert headers["user-agent"].startswith("Mozilla/5.0")
 
     def test_profile_header_is_omitted_when_unavailable(self) -> None:
         tokens = SessionTokens(
@@ -118,10 +120,10 @@ class TestClientHeaders:
         LifetimeAPIClient(tokens, session=session)
 
         headers = session.headers
-        assert headers["x-ltf-ct"] == "jwe-blob"
         assert headers["x-ltf-jwe"] == "jwe-blob"
         assert headers["x-ltf-ssoid"] == "C_abc123"
         assert "authorization" not in headers
+        assert "x-ltf-ct" not in headers
         assert "x-ltf-profile" not in headers
 
     def test_direct_auth_sessions_use_browser_style_x_ltf_headers(self) -> None:
@@ -136,11 +138,11 @@ class TestClientHeaders:
         LifetimeAPIClient(tokens, session=session)
 
         headers = session.headers
-        assert headers["x-ltf-ct"] == "direct-token"
         assert headers["x-ltf-jwe"] == "direct-token"
         assert headers["x-ltf-profile"] == "profile-jwt"
         assert headers["x-ltf-ssoid"] == "direct-sso"
         assert "authorization" not in headers
+        assert "x-ltf-ct" not in headers
 
 
 class TestListClasses:
