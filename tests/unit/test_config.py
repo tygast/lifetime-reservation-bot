@@ -29,6 +29,7 @@ class TestEmailConfig:
 
     def test_from_env(self, mock_env: dict[str, str]) -> None:
         """Test creating EmailConfig from environment variables."""
+        assert mock_env
         config = EmailConfig.from_env()
         assert config.sender == "test@gmail.com"
         assert config.password == "testpassword123"
@@ -90,6 +91,7 @@ class TestSMSConfig:
 
     def test_from_env(self, mock_env: dict[str, str]) -> None:
         """Test creating SMSConfig from environment variables."""
+        assert mock_env
         config = SMSConfig.from_env()
         assert config.account_sid == "ACtest123456789"
         assert config.auth_token == "test_auth_token"
@@ -163,6 +165,7 @@ class TestClassConfig:
 
     def test_from_env(self, mock_env: dict[str, str]) -> None:
         """Test creating ClassConfig from environment variables."""
+        assert mock_env
         config = ClassConfig.from_env()
         assert config.name == "Pickleball"
         assert config.instructor == "John D"
@@ -180,6 +183,15 @@ class TestClassConfig:
             assert config.start_time == ""
             assert config.end_time == "10:00 AM"
 
+    def test_from_env_normalizes_no_instructor_values(self) -> None:
+        env = {
+            "TARGET_CLASS": "Pickleball",
+            "TARGET_INSTRUCTOR": "none",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            config = ClassConfig.from_env()
+            assert config.instructor == ""
+
 
 class TestClubConfig:
     """Tests for ClubConfig."""
@@ -187,44 +199,19 @@ class TestClubConfig:
     def test_init(self, club_config: ClubConfig) -> None:
         """Test ClubConfig initialization."""
         assert club_config.name == "San Antonio 281"
-        assert club_config.state == "TX"
 
     def test_from_env(self, mock_env: dict[str, str]) -> None:
         """Test creating ClubConfig from environment variables."""
+        assert mock_env
         config = ClubConfig.from_env()
         assert config.name == "San Antonio 281"
-        assert config.state == "TX"
 
     def test_from_env_raises_without_name(self) -> None:
         """Test from_env raises ValueError when name is missing."""
-        with patch.dict(os.environ, {"LIFETIME_CLUB_STATE": "TX"}, clear=True):
-            with pytest.raises(ValueError, match="LIFETIME_CLUB_NAME"):
-                ClubConfig.from_env()
-
-    def test_from_env_raises_without_state(self) -> None:
-        """Test from_env raises ValueError when state is missing."""
-        with patch.dict(os.environ, {"LIFETIME_CLUB_NAME": "Test Club"}, clear=True):
-            with pytest.raises(ValueError, match="LIFETIME_CLUB_STATE"):
-                ClubConfig.from_env()
-
-    def test_get_url_segment(self) -> None:
-        """Test URL segment generation."""
-        config = ClubConfig(name="San Antonio 281", state="TX")
-        assert config.get_url_segment() == "san-antonio-281"
-
-    def test_get_url_segment_with_life_time_prefix(self) -> None:
-        """Test URL segment strips Life Time prefix."""
-        config = ClubConfig(name="Life Time - Flower Mound", state="TX")
-        assert config.get_url_segment() == "flower-mound"
-
-    def test_get_url_segment_with_at(self) -> None:
-        """Test URL segment handles 'at' in name."""
-        config = ClubConfig(name="Club at Location", state="TX")
-        assert config.get_url_segment() == "club-location"
-
-    def test_get_url_param(self, club_config: ClubConfig) -> None:
-        """Test URL param generation."""
-        assert club_config.get_url_param() == "San+Antonio+281"
+        with patch.dict(os.environ, {}, clear=True), pytest.raises(
+            ValueError, match="LIFETIME_CLUB_NAME"
+        ):
+            ClubConfig.from_env()
 
 
 class TestBotConfig:
@@ -236,20 +223,17 @@ class TestBotConfig:
         assert bot_config.password == "testpassword"
         assert bot_config.notification_method == "email"
         assert bot_config.run_on_schedule is False
-        assert bot_config.headless is True
-        assert bot_config.login_url == "https://my.lifetime.life/login.html"
 
     def test_from_env(self, mock_env: dict[str, str]) -> None:
         """Test creating BotConfig from environment variables."""
+        assert mock_env
         config = BotConfig.from_env(reload_env=False)
         assert config.username == "test@example.com"
         assert config.password == "testpassword"
         assert config.club.name == "San Antonio 281"
-        assert config.club.state == "TX"
         assert config.target_class.name == "Pickleball"
         assert config.notification_method == "email"
         assert config.run_on_schedule is False
-        assert config.headless is True
 
     def test_from_env_notification_method_sms(self) -> None:
         """Test notification_method defaults to email for invalid values."""
@@ -289,16 +273,3 @@ class TestBotConfig:
         with patch.dict(os.environ, env, clear=True):
             config = BotConfig.from_env(reload_env=False)
             assert config.run_on_schedule is True
-
-    def test_from_env_headless_false(self) -> None:
-        """Test headless parses 'false' correctly."""
-        env = {
-            "LIFETIME_USERNAME": "test@example.com",
-            "LIFETIME_PASSWORD": "testpassword",
-            "LIFETIME_CLUB_NAME": "Test Club",
-            "LIFETIME_CLUB_STATE": "TX",
-            "HEADLESS": "false",
-        }
-        with patch.dict(os.environ, env, clear=True):
-            config = BotConfig.from_env(reload_env=False)
-            assert config.headless is False

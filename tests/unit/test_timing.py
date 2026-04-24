@@ -5,8 +5,6 @@ from __future__ import annotations
 import datetime
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from lifetime_bot.utils.timing import (
     get_target_date,
     get_target_utc_time,
@@ -33,7 +31,7 @@ class TestGetTargetDate:
 
     @patch("lifetime_bot.utils.timing.datetime")
     def test_not_on_schedule_with_target_date(
-        self, mock_datetime: MagicMock
+        self, _mock_datetime: MagicMock
     ) -> None:
         """Test that explicit target_date is returned when not on schedule."""
         result = get_target_date(run_on_schedule=False, target_date="2026-02-01")
@@ -224,7 +222,7 @@ class TestWaitUntilUtc:
     @patch("lifetime_bot.utils.timing.time.sleep")
     @patch("lifetime_bot.utils.timing.datetime")
     def test_callback_is_executed(
-        self, mock_datetime: MagicMock, mock_sleep: MagicMock
+        self, mock_datetime: MagicMock, _mock_sleep: MagicMock
     ) -> None:
         """Test that callback is always executed."""
         mock_now = datetime.datetime(

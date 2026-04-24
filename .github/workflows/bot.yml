@@ -1,4 +1,4 @@
-name: Lifetime Bot Automation
+name: Life Time Reservation Bot
 
 on:
   schedule:
@@ -14,6 +14,15 @@ on:
           options:
             - dev
             - prod
+        runner:
+          description: "GitHub-hosted runner for manual runs"
+          required: true
+          default: "macos-latest"
+          type: choice
+          options:
+            - macos-latest
+            - ubuntu-latest
+            - windows-latest
 
 jobs:
   check-schedule:
@@ -44,13 +53,13 @@ jobs:
           fi
 
   run-bot:
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'schedule' && 'macos-latest' || inputs.runner }}
     needs: check-schedule
     if: always() && (github.event_name != 'schedule' || needs.check-schedule.outputs.should_run == 'true')
     environment: ${{ github.event_name == 'schedule' && 'prod' || inputs.env }}
     steps:
       - name: Deploying in selected environment
-        run: echo "Deploying in ${{ github.event_name == 'schedule' && 'prod' || inputs.env }}"
+        run: echo "Deploying in ${{ github.event_name == 'schedule' && 'prod' || inputs.env }} on ${{ github.event_name == 'schedule' && 'macos-latest' || inputs.runner }}"
 
       - name: Checkout Repository
         uses: actions/checkout@v5
@@ -69,34 +78,8 @@ jobs:
         run: |
           uv pip install --system -e .
 
-      - name: Create .env File
-        run: |
-          echo "EMAIL_SENDER=${{ secrets.EMAIL_SENDER }}" >> .env
-          echo "EMAIL_PASSWORD=${{ secrets.EMAIL_PASSWORD }}" >> .env
-          echo "EMAIL_RECEIVER=${{ secrets.EMAIL_RECEIVER }}" >> .env
-          echo "SMTP_SERVER=${{ secrets.SMTP_SERVER }}" >> .env
-          echo "SMTP_PORT=\"${{ secrets.SMTP_PORT }}\"" >> .env
-          echo "LIFETIME_USERNAME=${{ secrets.LIFETIME_USERNAME }}" >> .env
-          echo "LIFETIME_PASSWORD=${{ secrets.LIFETIME_PASSWORD }}" >> .env
-          echo "LIFETIME_CLUB_NAME=${{ vars.LIFETIME_CLUB_NAME }}" >> .env
-          echo "LIFETIME_CLUB_STATE=${{ vars.LIFETIME_CLUB_STATE }}" >> .env
-          echo "HEADLESS=${{ vars.HEADLESS }}" >> .env
-          echo "RUN_ON_SCHEDULE=${{ vars.RUN_ON_SCHEDULE }}" >> .env
-          echo "TARGET_CLASS=${{ vars.TARGET_CLASS }}" >> .env
-          echo "TARGET_INSTRUCTOR=${{ vars.TARGET_INSTRUCTOR }}" >> .env
-          echo "TARGET_DATE=${{ vars.TARGET_DATE }}" >> .env
-          echo "START_TIME=${{ vars.START_TIME }}" >> .env
-          echo "END_TIME=${{ vars.END_TIME }}" >> .env
-          echo "NOTIFICATION_METHOD=${{ vars.NOTIFICATION_METHOD }}" >> .env
-          echo "TARGET_LOCAL_TIME=${{ vars.TARGET_LOCAL_TIME }}" >> .env
-          echo "TIMEZONE=${{ vars.TIMEZONE }}" >> .env
-          echo "TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }}" >> .env
-          echo "TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }}" >> .env
-          echo "TWILIO_FROM_NUMBER=${{ secrets.TWILIO_FROM_NUMBER }}" >> .env
-          echo "SMS_NUMBER=${{ secrets.SMS_NUMBER }}" >> .env
-
       - name: Run Lifetime Bot
-        run: python -m lifetime_bot
+        run: python -u -m lifetime_bot
         env:
           EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
@@ -106,8 +89,6 @@ jobs:
           LIFETIME_USERNAME: ${{ secrets.LIFETIME_USERNAME }}
           LIFETIME_PASSWORD: ${{ secrets.LIFETIME_PASSWORD }}
           LIFETIME_CLUB_NAME: ${{ vars.LIFETIME_CLUB_NAME }}
-          LIFETIME_CLUB_STATE: ${{ vars.LIFETIME_CLUB_STATE }}
-          HEADLESS: ${{ vars.HEADLESS }}
           RUN_ON_SCHEDULE: ${{ vars.RUN_ON_SCHEDULE }}
           TARGET_CLASS: ${{ vars.TARGET_CLASS }}
           TARGET_INSTRUCTOR: ${{ vars.TARGET_INSTRUCTOR }}

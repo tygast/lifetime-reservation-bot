@@ -9,6 +9,9 @@ from typing import Literal
 from dotenv import load_dotenv
 
 NotificationMethod = Literal["email", "sms", "both"]
+NO_INSTRUCTOR_VALUES = frozenset(
+    {"", "any", "ignore", "ignored", "n/a", "na", "no instructor", "none"}
+)
 
 
 @dataclass
@@ -78,7 +81,9 @@ class ClassConfig:
         """Create ClassConfig from environment variables."""
         return cls(
             name=os.getenv("TARGET_CLASS", ""),
-            instructor=os.getenv("TARGET_INSTRUCTOR", ""),
+            instructor=_normalize_instructor_filter(
+                os.getenv("TARGET_INSTRUCTOR", "")
+            ),
             date=os.getenv("TARGET_DATE", ""),
             start_time=os.getenv("START_TIME", ""),
             end_time=os.getenv("END_TIME", "10:00 AM"),
@@ -90,31 +95,16 @@ class ClubConfig:
     """Life Time club configuration."""
 
     name: str
-    state: str
 
     @classmethod
     def from_env(cls) -> ClubConfig:
         """Create ClubConfig from environment variables."""
         name = os.getenv("LIFETIME_CLUB_NAME", "")
-        state = os.getenv("LIFETIME_CLUB_STATE", "")
-        if not name or not state:
+        if not name:
             raise ValueError(
-                "LIFETIME_CLUB_NAME and LIFETIME_CLUB_STATE environment variables are required"
+                "LIFETIME_CLUB_NAME environment variable is required"
             )
-        return cls(name=name, state=state)
-
-    def get_url_segment(self) -> str:
-        """Convert club name to URL-friendly format."""
-        name = self.name.replace("Life Time", "").replace("LifeTime", "").strip()
-        name = name.strip(" -")
-        name = name.replace(" at ", "-").replace(" - ", "-")
-        name = name.lower().replace(" ", "-")
-        name = "".join(c for c in name if c.isalnum() or c == "-")
-        return name
-
-    def get_url_param(self) -> str:
-        """Get URL parameter format for club name."""
-        return self.name.replace(" ", "+")
+        return cls(name=name)
 
 
 @dataclass
@@ -129,8 +119,6 @@ class BotConfig:
     sms: SMSConfig
     notification_method: NotificationMethod
     run_on_schedule: bool
-    headless: bool
-    login_url: str = "https://my.lifetime.life/login.html"
 
     @classmethod
     def from_env(cls, reload_env: bool = True) -> BotConfig:
@@ -140,10 +128,8 @@ class BotConfig:
             reload_env: If True, clear and reload environment variables from .env file.
         """
         if reload_env:
-            # Clear any cached environment variables
-            for key in list(os.environ.keys()):
-                del os.environ[key]
-            # Load from .env file
+            # Overlay .env onto the existing environment so shell-provided
+            # variables like PATH remain available to the process.
             load_dotenv(override=True)
 
         notification_method = os.getenv("NOTIFICATION_METHOD", "email").lower()
@@ -159,5 +145,11 @@ class BotConfig:
             sms=SMSConfig.from_env(),
             notification_method=notification_method,  # type: ignore[arg-type]
             run_on_schedule=os.getenv("RUN_ON_SCHEDULE", "false").lower() == "true",
-            headless=os.getenv("HEADLESS", "false").lower() == "true",
         )
+
+
+def _normalize_instructor_filter(value: str) -> str:
+    cleaned = value.strip()
+    if cleaned.lower() in NO_INSTRUCTOR_VALUES:
+        return ""
+    return cleaned

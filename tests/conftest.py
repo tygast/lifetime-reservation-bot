@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -54,10 +54,7 @@ def class_config() -> ClassConfig:
 @pytest.fixture
 def club_config() -> ClubConfig:
     """Create a test club configuration."""
-    return ClubConfig(
-        name="San Antonio 281",
-        state="TX",
-    )
+    return ClubConfig(name="San Antonio 281")
 
 
 @pytest.fixture
@@ -77,7 +74,6 @@ def bot_config(
         sms=sms_config,
         notification_method="email",
         run_on_schedule=False,
-        headless=True,
     )
 
 
@@ -88,7 +84,6 @@ def env_vars() -> dict[str, str]:
         "LIFETIME_USERNAME": "test@example.com",
         "LIFETIME_PASSWORD": "testpassword",
         "LIFETIME_CLUB_NAME": "San Antonio 281",
-        "LIFETIME_CLUB_STATE": "TX",
         "TARGET_CLASS": "Pickleball",
         "TARGET_INSTRUCTOR": "John D",
         "TARGET_DATE": "2026-01-15",
@@ -105,7 +100,6 @@ def env_vars() -> dict[str, str]:
         "SMS_NUMBER": "+15559876543",
         "NOTIFICATION_METHOD": "email",
         "RUN_ON_SCHEDULE": "false",
-        "HEADLESS": "true",
     }
 
 
@@ -114,22 +108,3 @@ def mock_env(env_vars: dict[str, str]):
     """Mock environment variables for testing."""
     with patch.dict(os.environ, env_vars, clear=True):
         yield env_vars
-
-
-@pytest.fixture
-def mock_webdriver():
-    """Create a mock WebDriver."""
-    driver = MagicMock()
-    driver.current_url = "https://my.lifetime.life/test"
-    driver.title = "Test Page"
-    driver.find_elements.return_value = []
-    driver.find_element.return_value = MagicMock()
-    return driver
-
-
-@pytest.fixture
-def mock_wait():
-    """Create a mock WebDriverWait."""
-    wait = MagicMock()
-    wait.until.return_value = MagicMock()
-    return wait

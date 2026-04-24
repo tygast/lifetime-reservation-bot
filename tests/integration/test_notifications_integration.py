@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from lifetime_bot.config import EmailConfig, SMSConfig
 from lifetime_bot.notifications import (
     EmailNotificationService,
@@ -40,7 +38,9 @@ class TestEmailNotificationIntegration:
 
         # Verify SMTP interactions
         mock_smtp.assert_called_once_with(
-            email_config.smtp_server, email_config.smtp_port
+            email_config.smtp_server,
+            email_config.smtp_port,
+            timeout=5.0,
         )
         mock_server.starttls.assert_called_once()
         mock_server.login.assert_called_once_with(

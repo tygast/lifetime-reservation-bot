@@ -1,18 +1,24 @@
-# Lifetime Fitness Reservation Bot
+# Life Time Reservation Bot
 
-An automated bot that helps you reserve classes at Life Time Fitness clubs. The bot can be scheduled to run at specific times to secure your spot in popular classes as soon as they become available.
+An automated bot that helps you reserve classes at Life Time clubs. The bot can be scheduled to run at specific times to secure your spot in popular classes as soon as they become available.
 
 ## Features
 
-- Automatically logs into your Life Time Fitness account
-- Navigates to the class schedule for your preferred club
-- Finds and reserves your target class based on class name, instructor, and time
-- Handles waitlist scenarios automatically
-- Special handling for classes requiring waivers (e.g., Pickleball)
-- Sends notifications via email and/or SMS about reservation status
+- Signs in through Life Time's direct member-login APIs without browser automation
+- Calls `api.lifetimefitness.com` directly to list classes, reserve, waitlist, and accept required waivers
+- Sends notifications via email and/or SMS with the specific outcome (reserved / waitlisted / already reserved / failed)
 - Configurable retry logic (up to 3 attempts)
 - Can be scheduled to run at specific local times with automatic DST handling
 - Runs automatically via GitHub Actions or locally
+
+## How it works
+
+1. **Login.** `POST /auth/v2/login` authenticates the member account and returns the session token pair used by Life Time's APIs.
+2. **Profile lookup.** `GET /user-profile/profile` returns the member id needed for reservation calls.
+3. **List classes.** `GET /ux/web-schedules/v2/schedules/classes?locations=...&start=...&end=...` → JSON list. The bot filters by class name / instructor / start-time / end-time.
+4. **Register.** `POST /sys/registrations/V3/ux/event` with the event id. The server decides reservation vs waitlist based on capacity.
+5. **Finalize if needed.** `PUT /sys/registrations/V3/ux/event/{id}/complete` with any required document (waiver) acceptances.
+6. **Notify.** Email/SMS with subject indicating reserved vs waitlisted vs failed.
 
 ## Project Structure
 
@@ -21,36 +27,28 @@ lifetime-reservation-bot/
 ├── src/
 │   └── lifetime_bot/
 │       ├── __init__.py          # Package exports
-│       ├── __main__.py          # CLI entry point with retry logic
-│       ├── bot.py               # Main LifetimeReservationBot class
+│       ├── __main__.py          # CLI entry point with retry + scheduling
+│       ├── orchestrator.py      # Orchestrator: auth -> schedule -> reserve -> notify
+│       ├── api.py               # HTTP client for api.lifetimefitness.com
 │       ├── config.py            # Configuration dataclasses
 │       ├── notifications/
-│       │   ├── __init__.py
 │       │   ├── base.py          # Abstract notification service
 │       │   ├── email.py         # Email notification service
 │       │   └── sms.py           # SMS notification service (via Twilio)
-│       ├── utils/
-│       │   ├── __init__.py
-│       │   └── timing.py        # Timing and scheduling utilities
-│       └── webdriver/
-│           ├── __init__.py
-│           └── driver.py        # Selenium WebDriver setup
-├── archive/
-│   └── lifetime_bot.py          # Legacy monolithic version (deprecated)
+│       └── utils/
+│           └── timing.py        # Timing and scheduling utilities
 ├── .github/
 │   └── workflows/
 │       ├── bot.yml              # GitHub Actions workflow
 │       └── keepalive.yml        # Prevents workflow disabling after 60 days
 ├── pyproject.toml               # Python project configuration
 ├── .env.example                 # Environment variables template
-├── .gitignore                   # Git ignore rules
 └── README.md                    # This file
 ```
 
 ## Requirements
 
 - Python 3.9 or higher
-- Chrome browser (for Selenium WebDriver)
 - Gmail account (or other SMTP provider) for sending notifications
 
 ## Installation
@@ -95,7 +93,7 @@ pip install -e .
 
 ```bash
 # Install dependencies directly from pyproject.toml
-pip install python-dotenv selenium webdriver-manager
+pip install python-dotenv requests twilio
 ```
 
 ## Configuration
@@ -126,10 +124,6 @@ LIFETIME_PASSWORD=your_lifetime_password
 #   Flower Mound
 #   Plano
 LIFETIME_CLUB_NAME=San Antonio 281
-
-# Two-letter state abbreviation in ALL CAPS
-# Examples: TX, CA, NY, FL, CO
-LIFETIME_CLUB_STATE=TX
 
 # ===========================================
 # TARGET CLASS CONFIGURATION
@@ -196,9 +190,6 @@ SMS_NUMBER=+15559876543
 # ===========================================
 # BOT BEHAVIOR
 # ===========================================
-# Run browser without GUI (set to "false" for debugging)
-HEADLESS=true
-
 # If "true", calculates TARGET_DATE as today + 8 days
 # If "false", uses the TARGET_DATE value specified above
 RUN_ON_SCHEDULE=false
@@ -282,9 +273,6 @@ lifetime-bot
 You can override environment variables at runtime:
 
 ```bash
-# Run in non-headless mode (see browser actions)
-HEADLESS=false python -m lifetime_bot
-
 # Override target date
 TARGET_DATE=2025-02-01 python -m lifetime_bot
 
@@ -295,13 +283,12 @@ RUN_ON_SCHEDULE=false python -m lifetime_bot
 ### What the Bot Does
 
 1. **Waits for target time** (if `RUN_ON_SCHEDULE=true`): Converts `TARGET_LOCAL_TIME` to UTC (handling DST automatically) and sleeps until that time
-2. **Logs into Life Time**: Uses Selenium to authenticate with your credentials
-3. **Navigates to schedule**: Opens the class schedule for your club and target date
-4. **Finds target class**: Searches for the class matching your criteria (name, instructor, time)
-5. **Reserves the class**: Clicks the Reserve button (or Add to Waitlist if full)
-6. **Handles waivers**: For classes like Pickleball, accepts the waiver automatically
-7. **Sends notification**: Emails/texts you the result (success, failure, or already reserved)
-8. **Retries on failure**: Attempts up to 3 times with 30-second delays between retries
+2. **Authenticates**: Uses Life Time's direct member-login APIs with your credentials
+3. **Finds target class**: Searches the schedule API for the class matching your criteria (name, instructor, time)
+4. **Reserves the class**: Calls the reservation API (or identifies that the account is already booked)
+5. **Handles waivers**: For classes like Pickleball, accepts the waiver automatically
+6. **Sends notification**: Emails/texts you the result (reserved, waitlisted, already reserved, or failed)
+7. **Retries on failure**: Attempts up to 3 times with short delays between retries
 
 ## GitHub Actions (Automated Scheduling)
 
@@ -340,13 +327,11 @@ The runner starts early to absorb GitHub Actions scheduling delays (which regula
    | Variable Name | Description |
    |---------------|-------------|
    | `LIFETIME_CLUB_NAME` | Your club name |
-   | `LIFETIME_CLUB_STATE` | Two-letter state code |
    | `TARGET_CLASS` | Class name |
    | `TARGET_INSTRUCTOR` | Instructor name |
    | `TARGET_DATE` | Target date (if not using schedule) |
    | `START_TIME` | Class start time |
    | `END_TIME` | Class end time |
-   | `HEADLESS` | `true` (always for CI) |
    | `RUN_ON_SCHEDULE` | `true` for automatic date calculation |
    | `NOTIFICATION_METHOD` | `email`, `sms`, or `both` |
    | `TARGET_LOCAL_TIME` | Local time to run (e.g., `10:00:00`) |
@@ -360,7 +345,7 @@ The runner starts early to absorb GitHub Actions scheduling delays (which regula
 ### Manual Trigger
 
 You can manually run the workflow:
-1. Go to Actions → Lifetime Bot Automation
+1. Go to Actions → Life Time Reservation Bot
 2. Click "Run workflow"
 3. Select the environment (`dev` or `prod`)
 4. Click "Run workflow"
@@ -395,7 +380,6 @@ The bot matches classes using these criteria (ALL must match):
 1. Go to the [Life Time Club Directory](https://my.lifetime.life/view-all-clubs.html)
 2. Find your club in the list
 3. Set `LIFETIME_CLUB_NAME` to the club name (e.g., `San Antonio 281`)
-4. Set `LIFETIME_CLUB_STATE` to the two-letter state code in ALL CAPS (e.g., `TX`)
 
 ### Finding Class Details
 
@@ -405,6 +389,7 @@ The bot matches classes using these criteria (ALL must match):
    ```
    - `{state}` = lowercase state abbreviation (e.g., `tx`, `ca`, `ny`)
    - `{club-name}` = club name in lowercase with hyphens (e.g., `san-antonio-281`, `flower-mound`)
+   - the bot does not store `{state}` as configuration; this URL is only for manually checking the schedule in a browser
 
 2. Example URLs:
    - San Antonio 281: `https://my.lifetime.life/clubs/tx/san-antonio-281/classes.html`
@@ -423,8 +408,10 @@ The bot sends different notifications based on the outcome:
 
 | Subject | When |
 |---------|------|
-| `Lifetime Bot - Success` | Class successfully reserved |
-| `Lifetime Bot - Already Reserved` | Class was already reserved or on waitlist |
+| `Lifetime Bot - Reserved` | Class successfully reserved |
+| `Lifetime Bot - Added to Waitlist` | Class was full and you were added to the waitlist |
+| `Lifetime Bot - Already Reserved` | Class was already on your account |
+| `Lifetime Bot - Login Failed` | Login/authentication failed before lookup or reservation |
 | `Lifetime Bot - Failure` | Failed to reserve (includes error details) |
 | `Lifetime Bot - All Attempts Failed` | Failed after 3 retry attempts |
 
@@ -447,7 +434,7 @@ Each notification includes:
 **Class Not Found**
 - Verify the class name, instructor, and time match EXACTLY
 - Check that the class exists on the target date
-- Ensure `LIFETIME_CLUB_NAME` and `LIFETIME_CLUB_STATE` are correct
+- Ensure `LIFETIME_CLUB_NAME` exactly matches the schedule location name
 
 **Email Notification Failures**
 - Use a Gmail App Password, not your regular password
@@ -460,22 +447,12 @@ Each notification includes:
 - Check Twilio console logs for error codes
 - Verify phone numbers use E.164 format (+1XXXXXXXXXX)
 
-**WebDriver Errors**
-- Ensure Chrome is installed on your system
-- The `webdriver-manager` package handles ChromeDriver automatically
-- Try running with `HEADLESS=false` to see what's happening
-
 ### Debugging Tips
 
-1. **Run with visible browser**:
-   ```bash
-   HEADLESS=false python -m lifetime_bot
-   ```
-
-2. **Check GitHub Actions logs**:
+1. **Check GitHub Actions logs**:
    - Go to Actions → Select workflow run → Click on job → View logs
 
-3. **Test notifications separately**:
+2. **Test notifications separately**:
    ```python
    from lifetime_bot.config import BotConfig, EmailConfig
    from lifetime_bot.notifications import EmailNotificationService
@@ -510,9 +487,8 @@ python -m ruff format src/
 The codebase follows a modular architecture:
 
 - **`config.py`**: Dataclasses for configuration (`BotConfig`, `EmailConfig`, `SMSConfig`, `ClassConfig`, `ClubConfig`)
-- **`bot.py`**: Main `LifetimeReservationBot` class with all reservation logic
+- **`orchestrator.py`**: Main `ReservationOrchestrator` class with reservation coordination logic
 - **`notifications/`**: Abstract `NotificationService` with email and SMS implementations
-- **`webdriver/`**: Selenium WebDriver factory function
 - **`utils/timing.py`**: UTC time waiting and date calculation utilities
 - **`__main__.py`**: CLI entry point with retry logic
 
