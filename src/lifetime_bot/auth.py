@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -13,6 +14,7 @@ from lifetime_bot.models import SessionTokens
 
 DIRECT_LOGIN_URL = f"{API_BASE}/auth/v2/login"
 PROFILE_URL = f"{API_BASE}/user-profile/profile"
+SessionFactory = Callable[[], requests.Session]
 
 
 @dataclass(frozen=True)
@@ -26,11 +28,17 @@ class AuthenticatedSession:
 class DirectAPIAuthenticator:
     """Authenticate against Life Time's direct member APIs."""
 
-    def __init__(self, *, timeout: float = 10.0) -> None:
+    def __init__(
+        self,
+        *,
+        timeout: float = 10.0,
+        session_factory: SessionFactory | None = None,
+    ) -> None:
         self.timeout = timeout
+        self.session_factory = session_factory or requests.Session
 
     def login(self, username: str, password: str) -> AuthenticatedSession:
-        session = requests.Session()
+        session = self.session_factory()
         login_response = session.post(
             DIRECT_LOGIN_URL,
             headers=self._direct_auth_headers(),

@@ -23,9 +23,7 @@ def _response(
 
 
 class TestDirectAPIAuthenticator:
-    def test_login_returns_authenticated_session(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_login_returns_authenticated_session(self) -> None:
         session = MagicMock()
         session.post.return_value = _response(
             {
@@ -44,11 +42,11 @@ class TestDirectAPIAuthenticator:
                 "partyId": 1,
             }
         )
-        monkeypatch.setattr(
-            "lifetime_bot.auth.requests.Session", MagicMock(return_value=session)
-        )
 
-        result = DirectAPIAuthenticator(timeout=10.0).login("user", "pass")
+        result = DirectAPIAuthenticator(
+            timeout=10.0,
+            session_factory=lambda: session,
+        ).login("user", "pass")
 
         assert result.tokens.jwe == "auth-token"
         assert result.tokens.profile == "profile-jwt"
@@ -85,7 +83,6 @@ class TestDirectAPIAuthenticator:
     )
     def test_login_rejects_bad_payloads(
         self,
-        monkeypatch: pytest.MonkeyPatch,
         login_payload: dict[str, object],
         profile_payload: dict[str, object],
         expected: str,
@@ -93,16 +90,14 @@ class TestDirectAPIAuthenticator:
         session = MagicMock()
         session.post.return_value = _response(login_payload)
         session.get.return_value = _response(profile_payload)
-        monkeypatch.setattr(
-            "lifetime_bot.auth.requests.Session", MagicMock(return_value=session)
-        )
 
         with pytest.raises(LifetimeAPIError, match=expected):
-            DirectAPIAuthenticator(timeout=10.0).login("user", "pass")
+            DirectAPIAuthenticator(
+                timeout=10.0,
+                session_factory=lambda: session,
+            ).login("user", "pass")
 
-    def test_login_reports_http_error_before_json_parse(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_login_reports_http_error_before_json_parse(self) -> None:
         session = MagicMock()
         response = MagicMock()
         response.ok = False
@@ -110,9 +105,9 @@ class TestDirectAPIAuthenticator:
         response.text = "<html>upstream error</html>"
         response.json.side_effect = ValueError("no json")
         session.post.return_value = response
-        monkeypatch.setattr(
-            "lifetime_bot.auth.requests.Session", MagicMock(return_value=session)
-        )
 
         with pytest.raises(LifetimeAPIError, match=r"auth/v2/login returned 503"):
-            DirectAPIAuthenticator(timeout=10.0).login("user", "pass")
+            DirectAPIAuthenticator(
+                timeout=10.0,
+                session_factory=lambda: session,
+            ).login("user", "pass")
