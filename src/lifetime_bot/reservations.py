@@ -5,10 +5,11 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
-from lifetime_bot.api import LifetimeAPIClient, extract_required_document_ids, match_class
+from lifetime_bot.api import LifetimeAPIClient
 from lifetime_bot.config import ClassConfig
 from lifetime_bot.errors import LifetimeAPIError
 from lifetime_bot.models import ClassEvent, RegistrationOutcome, RegistrationResult
+from lifetime_bot.parsers import extract_required_document_ids, match_class
 
 
 class ReservationService:
