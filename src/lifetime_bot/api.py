@@ -128,6 +128,7 @@ class LifetimeAPIClient:
             "referer": "https://my.lifetime.life/",
         }
         if tokens.is_direct_auth:
+            headers["X-LTF-CT"] = tokens.jwe
             headers["X-LTF-JWE"] = tokens.jwe
             if tokens.profile:
                 headers["X-LTF-PROFILE"] = tokens.profile

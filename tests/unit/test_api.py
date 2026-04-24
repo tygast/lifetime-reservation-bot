@@ -110,6 +110,7 @@ class TestClientHeaders:
         LifetimeAPIClient(tokens, session=session)
 
         headers = session.headers
+        assert headers["x-ltf-ct"] == "jwe-blob"
         assert headers["x-ltf-jwe"] == "jwe-blob"
         assert headers["x-ltf-ssoid"] == "C_abc123"
         assert "authorization" not in headers
@@ -127,6 +128,7 @@ class TestClientHeaders:
         LifetimeAPIClient(tokens, session=session)
 
         headers = session.headers
+        assert headers["x-ltf-ct"] == "direct-token"
         assert headers["x-ltf-jwe"] == "direct-token"
         assert headers["x-ltf-profile"] == "profile-jwt"
         assert headers["x-ltf-ssoid"] == "direct-sso"

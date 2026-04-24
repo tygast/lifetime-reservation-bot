@@ -441,6 +441,17 @@ class LifetimeReservationBot:
             print(f"Could not fetch registration info during {context}: {exc}")
             return None
 
+        registered = info.get("registeredMembers")
+        unregistered = info.get("unregisteredMembers")
+        register_cta = "yes" if info.get("registerCta") else "no"
+        if isinstance(registered, list) or isinstance(unregistered, list):
+            print(
+                f"Registration info ({context}): "
+                f"registered={len(registered) if isinstance(registered, list) else 0} "
+                f"unregistered={len(unregistered) if isinstance(unregistered, list) else 0} "
+                f"registerCta={register_cta}"
+            )
+
         member = _find_registered_member(info, client.member_id)
         if member is None:
             return None
