@@ -607,7 +607,7 @@ class TestDirectAPIAuth:
             }
         )
         session_factory = MagicMock(return_value=session)
-        monkeypatch.setattr("lifetime_bot.bot.requests.Session", session_factory)
+        monkeypatch.setattr("lifetime_bot.auth.requests.Session", session_factory)
 
         tokens = bot._login_via_api()
 
@@ -655,7 +655,7 @@ class TestDirectAPIAuth:
         session = MagicMock()
         session.post.return_value = _response(login_payload)
         session.get.return_value = _response(profile_payload)
-        monkeypatch.setattr("lifetime_bot.bot.requests.Session", MagicMock(return_value=session))
+        monkeypatch.setattr("lifetime_bot.auth.requests.Session", MagicMock(return_value=session))
 
         with pytest.raises(LifetimeAPIError, match=expected):
             bot._login_via_api()
@@ -670,7 +670,7 @@ class TestDirectAPIAuth:
         response.text = "<html>upstream error</html>"
         response.json.side_effect = ValueError("no json")
         session.post.return_value = response
-        monkeypatch.setattr("lifetime_bot.bot.requests.Session", MagicMock(return_value=session))
+        monkeypatch.setattr("lifetime_bot.auth.requests.Session", MagicMock(return_value=session))
 
         with pytest.raises(LifetimeAPIError, match=r"auth/v2/login returned 503"):
             bot._login_via_api()
