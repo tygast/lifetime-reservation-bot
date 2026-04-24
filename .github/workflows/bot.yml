@@ -1,4 +1,4 @@
-name: Lifetime Bot Automation
+name: Life Time Reservation Bot
 
 on:
   schedule:

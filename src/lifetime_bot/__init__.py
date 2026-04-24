@@ -1,6 +1,6 @@
-"""Lifetime Fitness Reservation Bot.
+"""Life Time Reservation Bot.
 
-An automated bot for reserving classes at Life Time Fitness.
+An automated bot for reserving classes at Life Time.
 """
 
 __version__ = "1.0.0"

@@ -1,4 +1,4 @@
-"""HTTP client for Life Time Fitness's internal API.
+"""HTTP client for Life Time's internal API.
 
 The reservation APIs accept Life Time's static APIM key plus per-member auth
 headers. The bot now authenticates exclusively through the direct

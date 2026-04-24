@@ -1,12 +1,12 @@
-# Lifetime Fitness Reservation Bot
+# Life Time Reservation Bot
 
-An automated bot that helps you reserve classes at Life Time Fitness clubs. The bot can be scheduled to run at specific times to secure your spot in popular classes as soon as they become available.
+An automated bot that helps you reserve classes at Life Time clubs. The bot can be scheduled to run at specific times to secure your spot in popular classes as soon as they become available.
 
 ## Features
 
 - Signs in through Life Time's direct member-login APIs without browser automation
 - Calls `api.lifetimefitness.com` directly to list classes, reserve, waitlist, and accept required waivers
-- Sends notifications via email and/or SMS with the specific outcome (reserved / waitlisted / registered)
+- Sends notifications via email and/or SMS with the specific outcome (reserved / waitlisted / already reserved / failed)
 - Configurable retry logic (up to 3 attempts)
 - Can be scheduled to run at specific local times with automatic DST handling
 - Runs automatically via GitHub Actions or locally
@@ -28,7 +28,7 @@ lifetime-reservation-bot/
 │   └── lifetime_bot/
 │       ├── __init__.py          # Package exports
 │       ├── __main__.py          # CLI entry point with retry + scheduling
-│       ├── bot.py               # Orchestrator: login -> tokens -> API
+│       ├── bot.py               # Orchestrator: auth -> schedule -> reserve -> notify
 │       ├── api.py               # HTTP client for api.lifetimefitness.com
 │       ├── config.py            # Configuration dataclasses
 │       ├── notifications/
@@ -124,10 +124,6 @@ LIFETIME_PASSWORD=your_lifetime_password
 #   Flower Mound
 #   Plano
 LIFETIME_CLUB_NAME=San Antonio 281
-
-# Two-letter state abbreviation in ALL CAPS
-# Examples: TX, CA, NY, FL, CO
-LIFETIME_CLUB_STATE=TX
 
 # ===========================================
 # TARGET CLASS CONFIGURATION
@@ -291,7 +287,7 @@ RUN_ON_SCHEDULE=false python -m lifetime_bot
 3. **Finds target class**: Searches the schedule API for the class matching your criteria (name, instructor, time)
 4. **Reserves the class**: Calls the reservation API (or identifies that the account is already booked)
 5. **Handles waivers**: For classes like Pickleball, accepts the waiver automatically
-6. **Sends notification**: Emails/texts you the result (success, failure, or already reserved)
+6. **Sends notification**: Emails/texts you the result (reserved, waitlisted, already reserved, or failed)
 7. **Retries on failure**: Attempts up to 3 times with short delays between retries
 
 ## GitHub Actions (Automated Scheduling)
@@ -331,7 +327,6 @@ The runner starts early to absorb GitHub Actions scheduling delays (which regula
    | Variable Name | Description |
    |---------------|-------------|
    | `LIFETIME_CLUB_NAME` | Your club name |
-   | `LIFETIME_CLUB_STATE` | Two-letter state code |
    | `TARGET_CLASS` | Class name |
    | `TARGET_INSTRUCTOR` | Instructor name |
    | `TARGET_DATE` | Target date (if not using schedule) |
@@ -350,7 +345,7 @@ The runner starts early to absorb GitHub Actions scheduling delays (which regula
 ### Manual Trigger
 
 You can manually run the workflow:
-1. Go to Actions → Lifetime Bot Automation
+1. Go to Actions → Life Time Reservation Bot
 2. Click "Run workflow"
 3. Select the environment (`dev` or `prod`)
 4. Click "Run workflow"
@@ -385,7 +380,6 @@ The bot matches classes using these criteria (ALL must match):
 1. Go to the [Life Time Club Directory](https://my.lifetime.life/view-all-clubs.html)
 2. Find your club in the list
 3. Set `LIFETIME_CLUB_NAME` to the club name (e.g., `San Antonio 281`)
-4. Set `LIFETIME_CLUB_STATE` to the two-letter state code in ALL CAPS (e.g., `TX`)
 
 ### Finding Class Details
 
@@ -395,6 +389,7 @@ The bot matches classes using these criteria (ALL must match):
    ```
    - `{state}` = lowercase state abbreviation (e.g., `tx`, `ca`, `ny`)
    - `{club-name}` = club name in lowercase with hyphens (e.g., `san-antonio-281`, `flower-mound`)
+   - the bot does not store `{state}` as configuration; this URL is only for manually checking the schedule in a browser
 
 2. Example URLs:
    - San Antonio 281: `https://my.lifetime.life/clubs/tx/san-antonio-281/classes.html`
@@ -413,8 +408,10 @@ The bot sends different notifications based on the outcome:
 
 | Subject | When |
 |---------|------|
-| `Lifetime Bot - Success` | Class successfully reserved |
-| `Lifetime Bot - Already Reserved` | Class was already reserved or on waitlist |
+| `Lifetime Bot - Reserved` | Class successfully reserved |
+| `Lifetime Bot - Added to Waitlist` | Class was full and you were added to the waitlist |
+| `Lifetime Bot - Already Reserved` | Class was already on your account |
+| `Lifetime Bot - Login Failed` | Login/authentication failed before lookup or reservation |
 | `Lifetime Bot - Failure` | Failed to reserve (includes error details) |
 | `Lifetime Bot - All Attempts Failed` | Failed after 3 retry attempts |
 
@@ -437,7 +434,7 @@ Each notification includes:
 **Class Not Found**
 - Verify the class name, instructor, and time match EXACTLY
 - Check that the class exists on the target date
-- Ensure `LIFETIME_CLUB_NAME` and `LIFETIME_CLUB_STATE` are correct
+- Ensure `LIFETIME_CLUB_NAME` exactly matches the schedule location name
 
 **Email Notification Failures**
 - Use a Gmail App Password, not your regular password

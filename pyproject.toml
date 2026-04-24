@@ -1,7 +1,7 @@
 [project]
 name = "lifetime-bot"
 version = "1.0.0"
-description = "Automated reservation bot for Life Time Fitness classes"
+description = "Direct-auth reservation bot for Life Time classes"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
