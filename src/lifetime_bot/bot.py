@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import threading
 import time
 import traceback
+from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Callable
 
 import requests
 
@@ -26,6 +28,16 @@ from lifetime_bot.utils.timing import get_target_date
 DIRECT_LOGIN_URL = f"{API_BASE}/auth/v2/login"
 PROFILE_URL = f"{API_BASE}/user-profile/profile"
 HTTP_TIMEOUT_SECONDS = 10.0
+NOTIFICATION_TIMEOUT_SECONDS = 5.0
+
+
+@dataclass(frozen=True)
+class TimedAttemptResult:
+    """Outcome of a bounded callback execution."""
+
+    completed: bool
+    succeeded: bool
+    error: str | None = None
 
 
 class LifetimeReservationBot:
@@ -120,6 +132,10 @@ class LifetimeReservationBot:
             raise
 
         subject, body = self._describe_outcome(result, class_details)
+        print(f"Reservation outcome: {subject.removeprefix('Lifetime Bot - ')}.")
+        print(
+            f"Reservation flow core completed in {time.perf_counter() - started:.2f}s."
+        )
         self.send_notification(subject, body)
         print(f"Reservation flow finished in {time.perf_counter() - started:.2f}s.")
         return True
@@ -128,22 +144,45 @@ class LifetimeReservationBot:
 
     def send_notification(self, subject: str, message: str) -> None:
         method = self.config.notification_method
+        print(f"Notification phase started: {subject}")
         if method in {"email", "both"}:
             started = time.perf_counter()
-            if self.email_service.send(subject, message):
+            result = _run_with_timeout(
+                lambda: self.email_service.send(subject, message),
+                timeout_seconds=NOTIFICATION_TIMEOUT_SECONDS,
+            )
+            if not result.completed:
+                print(
+                    f"Email notification timed out after "
+                    f"{NOTIFICATION_TIMEOUT_SECONDS:.2f}s: {subject}"
+                )
+            elif result.error:
+                print(f"Email notification failed: {result.error}")
+            elif result.succeeded:
                 print(f"Notification sent via email: {subject}")
             else:
-                print(f"Failed to send email notification: {subject}")
+                print(f"Email notification service reported failure: {subject}")
             print(
                 f"Email notification attempt completed in "
                 f"{time.perf_counter() - started:.2f}s."
             )
         if method in {"sms", "both"}:
             started = time.perf_counter()
-            if self.sms_service.send(subject, message):
+            result = _run_with_timeout(
+                lambda: self.sms_service.send(subject, message),
+                timeout_seconds=NOTIFICATION_TIMEOUT_SECONDS,
+            )
+            if not result.completed:
+                print(
+                    f"SMS notification timed out after "
+                    f"{NOTIFICATION_TIMEOUT_SECONDS:.2f}s: {subject}"
+                )
+            elif result.error:
+                print(f"SMS notification failed: {result.error}")
+            elif result.succeeded:
                 print(f"Notification sent via SMS: {subject}")
             else:
-                print(f"Failed to send SMS notification: {subject}")
+                print(f"SMS notification service reported failure: {subject}")
             print(
                 f"SMS notification attempt completed in "
                 f"{time.perf_counter() - started:.2f}s."
@@ -439,3 +478,29 @@ def _find_registered_member(
         except (TypeError, ValueError):
             continue
     return None
+
+
+def _run_with_timeout(
+    callback: Callable[[], bool], *, timeout_seconds: float
+) -> TimedAttemptResult:
+    result: dict[str, Any] = {"done": False, "value": False, "error": None}
+
+    def _target() -> None:
+        try:
+            result["value"] = bool(callback())
+        except Exception as exc:  # pragma: no cover - exercised through caller logs
+            result["error"] = f"{type(exc).__name__}: {exc}"
+            result["value"] = False
+        finally:
+            result["done"] = True
+
+    thread = threading.Thread(target=_target, daemon=True)
+    thread.start()
+    thread.join(timeout_seconds)
+    if not result["done"]:
+        return TimedAttemptResult(completed=False, succeeded=False)
+    return TimedAttemptResult(
+        completed=True,
+        succeeded=bool(result["value"]),
+        error=result["error"],
+    )

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import time
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
@@ -77,6 +78,26 @@ class TestSendNotification:
         bot.send_notification("subject", "body")
         bot.email_service.send.assert_called_once()
         bot.sms_service.send.assert_called_once()
+
+    def test_email_timeout_does_not_block(
+        self, bot: LifetimeReservationBot, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        bot.config.notification_method = "email"
+
+        def _slow_send(_subject: str, _body: str) -> bool:
+            time.sleep(0.05)
+            return True
+
+        bot.email_service.send.side_effect = _slow_send
+
+        with patch("lifetime_bot.bot.NOTIFICATION_TIMEOUT_SECONDS", 0.01):
+            bot.send_notification("subject", "body")
+
+        bot.email_service.send.assert_called_once_with("subject", "body")
+        bot.sms_service.send.assert_not_called()
+        captured = capsys.readouterr().out
+        assert "Notification phase started: subject" in captured
+        assert "Email notification timed out after 0.01s: subject" in captured
 
 
 class TestGetClassDetails:
@@ -226,6 +247,48 @@ class TestReserveClassHappyPath:
         bot.email_service.send.assert_called()
         subject = bot.email_service.send.call_args.args[0]
         assert "Reserved" in subject
+
+    def test_logs_reservation_outcome_before_notification_phase(
+        self,
+        bot: LifetimeReservationBot,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.setattr(
+            bot, "_login_and_extract_tokens", lambda: SAMPLE_TOKENS
+        )
+        event = ClassEvent(
+            event_id="ZXhlcnA6ZXZ0",
+            name="Pickleball Open Play: All Levels",
+            instructor="John D",
+            start=datetime(2026, 4, 29, 9, 0, tzinfo=timezone.utc),
+            end=datetime(2026, 4, 29, 10, 0, tzinfo=timezone.utc),
+            location="San Antonio 281",
+            spots_available=5,
+            raw={},
+        )
+        client = MagicMock()
+        client.list_classes.return_value = [event]
+        client.register.return_value = RegistrationResult(
+            registration_id=99,
+            status="reserved",
+            needs_complete=False,
+            required_documents=None,
+            raw={},
+        )
+
+        bot.config.target_class.date = "2026-04-29"
+        bot.config.run_on_schedule = False
+
+        with patch("lifetime_bot.bot.LifetimeAPIClient", return_value=client):
+            assert bot.reserve_class() is True
+
+        captured = capsys.readouterr().out
+        assert "Reservation outcome: Reserved." in captured
+        assert "Notification phase started: Lifetime Bot - Reserved" in captured
+        assert captured.index("Reservation outcome: Reserved.") < captured.index(
+            "Notification phase started: Lifetime Bot - Reserved"
+        )
 
     def test_skips_complete_when_not_needed(
         self, bot: LifetimeReservationBot, monkeypatch: pytest.MonkeyPatch
