@@ -400,6 +400,22 @@ class TestCompleteRegistration:
             "acceptedDocuments": [],
         }
 
+    def test_accepts_empty_success_body(self) -> None:
+        session = MagicMock(spec=requests.Session)
+        session.headers = requests.structures.CaseInsensitiveDict()
+        response = MagicMock()
+        response.ok = True
+        response.status_code = 200
+        response.text = ""
+        response.json.side_effect = requests.exceptions.JSONDecodeError(
+            "Expecting value", "", 0
+        )
+        session.request.return_value = response
+
+        client = LifetimeAPIClient(SAMPLE_TOKENS, session=session)
+
+        assert client.complete_registration(42) == {}
+
 
 class TestMatchClass:
     def _event(

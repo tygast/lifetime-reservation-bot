@@ -231,7 +231,12 @@ class LifetimeAPIClient:
             f"{API_BASE}/sys/registrations/V3/ux/event/{registration_id}/complete",
             json=body,
         )
-        return response.json()
+        if not response.text.strip():
+            return {}
+        try:
+            return response.json()
+        except ValueError:
+            return {}
 
     def cancel_registration(self, registration_id: int) -> None:
         """DELETE a registration. Useful for CI cleanup after smoke tests."""

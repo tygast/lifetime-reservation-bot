@@ -17,11 +17,11 @@ on:
         runner:
           description: "GitHub-hosted runner for manual runs"
           required: true
-          default: "ubuntu-latest"
+          default: "macos-latest"
           type: choice
           options:
-            - ubuntu-latest
             - macos-latest
+            - ubuntu-latest
             - windows-latest
 
 jobs:
@@ -53,13 +53,13 @@ jobs:
           fi
 
   run-bot:
-    runs-on: ${{ github.event_name == 'schedule' && 'ubuntu-latest' || inputs.runner }}
+    runs-on: ${{ github.event_name == 'schedule' && 'macos-latest' || inputs.runner }}
     needs: check-schedule
     if: always() && (github.event_name != 'schedule' || needs.check-schedule.outputs.should_run == 'true')
     environment: ${{ github.event_name == 'schedule' && 'prod' || inputs.env }}
     steps:
       - name: Deploying in selected environment
-        run: echo "Deploying in ${{ github.event_name == 'schedule' && 'prod' || inputs.env }} on ${{ github.event_name == 'schedule' && 'ubuntu-latest' || inputs.runner }}"
+        run: echo "Deploying in ${{ github.event_name == 'schedule' && 'prod' || inputs.env }} on ${{ github.event_name == 'schedule' && 'macos-latest' || inputs.runner }}"
 
       - name: Checkout Repository
         uses: actions/checkout@v5
