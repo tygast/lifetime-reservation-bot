@@ -11,3 +11,12 @@ class LifetimeAPIError(Exception):
     @property
     def is_retryable(self) -> bool:
         return self.status_code is not None and self.status_code >= 500
+
+
+class ReservationAttemptError(Exception):
+    """Raised when a reservation attempt fails during a known phase."""
+
+    def __init__(self, phase: str, cause: BaseException) -> None:
+        super().__init__(str(cause))
+        self.phase = phase
+        self.cause = cause

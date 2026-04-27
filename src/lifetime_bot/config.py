@@ -67,6 +67,26 @@ class SMSConfig:
 
 
 @dataclass
+class NotificationConfig:
+    """Notification-only configuration."""
+
+    email: EmailConfig
+    sms: SMSConfig
+    method: NotificationMethod
+
+    @classmethod
+    def from_env(cls, reload_env: bool = True) -> NotificationConfig:
+        """Create NotificationConfig from environment variables."""
+        if reload_env:
+            load_dotenv(override=True)
+        return cls(
+            email=EmailConfig.from_env(),
+            sms=SMSConfig.from_env(),
+            method=_notification_method_from_env(),
+        )
+
+
+@dataclass
 class ClassConfig:
     """Target class configuration."""
 
@@ -132,19 +152,26 @@ class BotConfig:
             # variables like PATH remain available to the process.
             load_dotenv(override=True)
 
-        notification_method = os.getenv("NOTIFICATION_METHOD", "email").lower()
-        if notification_method not in ("email", "sms", "both"):
-            notification_method = "email"
+        notification_config = NotificationConfig.from_env(reload_env=False)
 
         return cls(
             username=os.getenv("LIFETIME_USERNAME", ""),
             password=os.getenv("LIFETIME_PASSWORD", ""),
             club=ClubConfig.from_env(),
             target_class=ClassConfig.from_env(),
-            email=EmailConfig.from_env(),
-            sms=SMSConfig.from_env(),
-            notification_method=notification_method,  # type: ignore[arg-type]
+            email=notification_config.email,
+            sms=notification_config.sms,
+            notification_method=notification_config.method,
             run_on_schedule=os.getenv("RUN_ON_SCHEDULE", "false").lower() == "true",
+        )
+
+    @property
+    def notifications(self) -> NotificationConfig:
+        """Expose the notification-specific subset of the bot config."""
+        return NotificationConfig(
+            email=self.email,
+            sms=self.sms,
+            method=self.notification_method,
         )
 
 
@@ -153,3 +180,10 @@ def _normalize_instructor_filter(value: str) -> str:
     if cleaned.lower() in NO_INSTRUCTOR_VALUES:
         return ""
     return cleaned
+
+
+def _notification_method_from_env() -> NotificationMethod:
+    notification_method = os.getenv("NOTIFICATION_METHOD", "email").lower()
+    if notification_method not in ("email", "sms", "both"):
+        return "email"
+    return notification_method
