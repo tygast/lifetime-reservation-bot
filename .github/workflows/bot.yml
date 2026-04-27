@@ -101,20 +101,19 @@ jobs:
         if: always()
         run: |
           if [ ! -f "$RESULT_PATH" ]; then
-            cat > "$RESULT_PATH" <<'EOF'
-            {
-              "success": false,
-              "subject": "Lifetime Bot - All Attempts Failed",
-              "body": "Failed to reserve class. The run ended before a final result payload was generated."
-            }
-            EOF
+            printf '%s\n' \
+              '{' \
+              '  "success": false,' \
+              '  "subject": "Lifetime Bot - All Attempts Failed",' \
+              '  "body": "Failed to reserve class. The run ended before a final result payload was generated."' \
+              '}' > "$RESULT_PATH"
           fi
         env:
           RESULT_PATH: ${{ runner.temp }}/lifetime-bot-result.json
 
       - name: Upload bot result payload
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lifetime-bot-result
           path: ${{ runner.temp }}/lifetime-bot-result.json
@@ -147,7 +146,7 @@ jobs:
           uv pip install --system -e .
 
       - name: Download bot result payload
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: lifetime-bot-result
           path: ${{ runner.temp }}
