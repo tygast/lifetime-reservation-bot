@@ -122,13 +122,3 @@ class RegistrationResult:
             required_documents=None,
             raw=raw,
         )
-
-    def completed(self) -> RegistrationResult:
-        return RegistrationResult(
-            registration_id=self.registration_id,
-            outcome=RegistrationOutcome.RESERVED,
-            raw_status="complete",
-            needs_complete=False,
-            required_documents=self.required_documents,
-            raw=self.raw,
-        )
