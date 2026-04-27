@@ -221,11 +221,13 @@ class TestReservationServiceReserveEvent:
         with pytest.raises(LifetimeAPIError, match="POST /event returned 500"):
             ReservationService(client).reserve_event("evt")
 
-    def test_raises_when_required_documents_cannot_be_found(self) -> None:
+    def test_raises_when_required_documents_cannot_be_found(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         client = MagicMock()
         client.get_registration_info.side_effect = [
             LifetimeAPIError("not found", status_code=404),
-            {},
+            {"registeredMembers": [], "unregisteredMembers": [{"agreementId": 77}]},
         ]
         client.register.return_value = RegistrationResult(
             registration_id=101,
@@ -233,10 +235,19 @@ class TestReservationServiceReserveEvent:
             raw_status="pending",
             needs_complete=True,
             required_documents=None,
-            raw={},
+            raw={"regId": 101, "regStatus": "pending"},
         )
 
         with pytest.raises(LifetimeAPIError, match="no waiver/document ids"):
             ReservationService(client).reserve_event("evt")
 
         client.complete_registration.assert_not_called()
+        captured = capsys.readouterr().out
+        assert (
+            "Registration info payload lacked recognized waiver/document ids: "
+            '{"registeredMembers": [], "unregisteredMembers": [{"agreementId": 77}]}'
+        ) in captured
+        assert (
+            "POST /event completion payload lacked recognized waiver/document ids: "
+            '{"regId": 101, "regStatus": "pending"}'
+        ) in captured
