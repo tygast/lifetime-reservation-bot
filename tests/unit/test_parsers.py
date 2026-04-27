@@ -70,6 +70,23 @@ class TestParseRegistrationResult:
         assert result.raw_status == "pending"
         assert result.required_documents == (77,)
 
+    def test_parses_pending_full_waitlist_registration_as_pending_completion(self) -> None:
+        payload = {
+            "regId": 186195720,
+            "regStatus": "pending",
+            "hasWaitlist": True,
+            "hasSpots": False,
+            "openSpots": 0,
+            "totalWaitlisted": 13,
+        }
+
+        result = parse_registration_result(payload)
+
+        assert result.outcome is RegistrationOutcome.PENDING_COMPLETION
+        assert result.raw_status == "pending"
+        assert result.needs_complete is True
+        assert result.required_documents is None
+
     def test_raises_when_response_missing_id(self) -> None:
         with pytest.raises(LifetimeAPIError):
             parse_registration_result({"status": "reserved"})

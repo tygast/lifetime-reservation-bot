@@ -153,9 +153,11 @@ class TestReservationServiceReserveEvent:
 
     def test_fetches_required_documents_when_register_omits_them(self) -> None:
         client = MagicMock()
+        client.member_id = 110137193
         client.get_registration_info.side_effect = [
             LifetimeAPIError("not found", status_code=404),
             {"agreement": {"agreementId": 77}},
+            {"registeredMembers": [{"id": 110137193, "name": "Tyler"}]},
         ]
         client.register.return_value = RegistrationResult(
             registration_id=101,
@@ -169,8 +171,68 @@ class TestReservationServiceReserveEvent:
         result = ReservationService(client).reserve_event("evt")
 
         assert result.outcome is RegistrationOutcome.RESERVED
+        assert result.registration_id == 101
         client.complete_registration.assert_called_once_with(
             101, accepted_documents=[77]
+        )
+
+    def test_returns_waitlisted_result_without_completion(self) -> None:
+        client = MagicMock()
+        client.get_registration_info.side_effect = LifetimeAPIError(
+            "not found",
+            status_code=404,
+        )
+        client.register.return_value = RegistrationResult(
+            registration_id=101,
+            outcome=RegistrationOutcome.WAITLISTED,
+            raw_status="pending",
+            needs_complete=False,
+            required_documents=None,
+            raw={},
+        )
+
+        result = ReservationService(client).reserve_event("evt")
+
+        assert result.outcome is RegistrationOutcome.WAITLISTED
+        client.complete_registration.assert_not_called()
+
+    def test_completes_pending_waitlist_flow_with_empty_documents(self) -> None:
+        client = MagicMock()
+        client.member_id = 110137193
+        client.get_registration_info.side_effect = [
+            LifetimeAPIError("not found", status_code=404),
+            {
+                "registeredMembers": [],
+                "unregisteredMembers": [{"id": 110137193, "name": "Tyler"}],
+            },
+            {
+                "registeredMembers": [
+                    {
+                        "id": 110137193,
+                        "name": "Tyler",
+                        "spotWaitlist": 13,
+                        "cancelCtas": [{"text": "Leave Waitlist"}],
+                    }
+                ],
+                "unregisteredMembers": [],
+            },
+        ]
+        client.register.return_value = RegistrationResult(
+            registration_id=101,
+            outcome=RegistrationOutcome.PENDING_COMPLETION,
+            raw_status="pending",
+            needs_complete=True,
+            required_documents=None,
+            raw={"regId": 101, "regStatus": "pending"},
+        )
+
+        result = ReservationService(client).reserve_event("evt")
+
+        assert result.outcome is RegistrationOutcome.WAITLISTED
+        assert result.registration_id == 101
+        client.complete_registration.assert_called_once_with(
+            101,
+            accepted_documents=[],
         )
 
     def test_skips_post_when_already_reserved(self) -> None:
@@ -225,9 +287,11 @@ class TestReservationServiceReserveEvent:
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
         client = MagicMock()
+        client.member_id = 110137193
         client.get_registration_info.side_effect = [
             LifetimeAPIError("not found", status_code=404),
             {"registeredMembers": [], "unregisteredMembers": [{"agreementId": 77}]},
+            {"registeredMembers": [], "unregisteredMembers": [{"id": 110137193}]},
         ]
         client.register.return_value = RegistrationResult(
             registration_id=101,
@@ -238,10 +302,16 @@ class TestReservationServiceReserveEvent:
             raw={"regId": 101, "regStatus": "pending"},
         )
 
-        with pytest.raises(LifetimeAPIError, match="no waiver/document ids"):
+        with pytest.raises(
+            LifetimeAPIError,
+            match="did not confirm a reserved or waitlisted outcome",
+        ):
             ReservationService(client).reserve_event("evt")
 
-        client.complete_registration.assert_not_called()
+        client.complete_registration.assert_called_once_with(
+            101,
+            accepted_documents=[],
+        )
         captured = capsys.readouterr().out
         assert (
             "Registration info payload lacked recognized waiver/document ids: "

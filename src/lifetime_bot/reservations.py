@@ -92,24 +92,33 @@ class ReservationService:
                 )
 
         if result.needs_complete:
+            pending_result = result
             documents = result.required_documents
             if documents is None:
                 documents = self.fetch_required_documents(event_id)
+            accepted_documents = list(documents or [])
             if documents is None:
                 _log_payload(
                     "POST /event completion payload lacked recognized waiver/document ids",
                     result.raw,
                 )
-                raise LifetimeAPIError(
-                    "Registration requires completion, but no waiver/document ids "
-                    "were available."
+                print(
+                    "No waiver/document ids were exposed; attempting PUT /complete "
+                    "with accepted documents: []."
                 )
-            accepted_documents = list(documents)
             self.client.complete_registration(
                 result.registration_id,
                 accepted_documents=accepted_documents,
             )
-            result = result.completed()
+            verified = self.detect_existing_registration(
+                event_id, context="post-complete"
+            )
+            if verified is None:
+                raise LifetimeAPIError(
+                    "PUT /complete succeeded, but follow-up registration info did "
+                    "not confirm a reserved or waitlisted outcome."
+                )
+            result = _resolve_post_complete_result(pending_result, verified)
             print(
                 f"PUT /complete succeeded "
                 f"(accepted documents: {accepted_documents})."
@@ -162,6 +171,28 @@ class ReservationService:
             return None
 
         member_name = str(member.get("name") or "Current member")
+        if _is_waitlisted_member(member):
+            waitlist_position = _waitlist_position(member)
+            if waitlist_position is not None:
+                print(
+                    f"Registration info ({context}) shows {member_name} "
+                    f"({self.client.member_id}) is on the waitlist at position "
+                    f"{waitlist_position} for event {event_id}."
+                )
+            else:
+                print(
+                    f"Registration info ({context}) shows {member_name} "
+                    f"({self.client.member_id}) is on the waitlist for event "
+                    f"{event_id}."
+                )
+            return RegistrationResult(
+                registration_id=None,
+                outcome=RegistrationOutcome.WAITLISTED,
+                raw_status="waitlisted",
+                needs_complete=False,
+                required_documents=None,
+                raw=info,
+            )
         print(
             f"Registration info ({context}) shows {member_name} "
             f"({self.client.member_id}) is already reserved for event {event_id}."
@@ -188,9 +219,56 @@ def _find_registered_member(
     return None
 
 
+def _is_waitlisted_member(member: dict[str, Any]) -> bool:
+    if _waitlist_position(member) is not None:
+        return True
+    cancel_ctas = member.get("cancelCtas")
+    if not isinstance(cancel_ctas, list):
+        return False
+    for cta in cancel_ctas:
+        if not isinstance(cta, dict):
+            continue
+        text = str(cta.get("text") or "").lower()
+        if "waitlist" in text:
+            return True
+    return False
+
+
+def _waitlist_position(member: dict[str, Any]) -> int | None:
+    position = member.get("spotWaitlist")
+    if isinstance(position, int):
+        return position
+    if isinstance(position, str) and position.isdigit():
+        return int(position)
+    return None
+
+
 def _log_payload(label: str, payload: Any) -> None:
     try:
         rendered = json.dumps(payload, sort_keys=True, default=str)
     except TypeError:
         rendered = repr(payload)
     print(f"{label}: {rendered}")
+
+
+def _resolve_post_complete_result(
+    pending_result: RegistrationResult,
+    verified_result: RegistrationResult,
+) -> RegistrationResult:
+    if verified_result.outcome is RegistrationOutcome.WAITLISTED:
+        return RegistrationResult(
+            registration_id=pending_result.registration_id,
+            outcome=RegistrationOutcome.WAITLISTED,
+            raw_status=verified_result.raw_status,
+            needs_complete=False,
+            required_documents=pending_result.required_documents,
+            raw=verified_result.raw,
+        )
+    return RegistrationResult(
+        registration_id=pending_result.registration_id,
+        outcome=RegistrationOutcome.RESERVED,
+        raw_status="complete",
+        needs_complete=False,
+        required_documents=pending_result.required_documents,
+        raw=verified_result.raw,
+    )
