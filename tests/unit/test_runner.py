@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock
 
 import requests
@@ -165,3 +166,67 @@ class TestRunBot:
             "Lifetime Bot - All Attempts Failed",
             "Failed to reserve class after 3 attempts.\n\nfailure body",
         )
+
+    def test_writes_success_result_payload(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        bot = MagicMock()
+        bot.reserve_class.return_value = _result(RegistrationOutcome.RESERVED)
+        bot.build_outcome_notification.return_value = (
+            "Lifetime Bot - Reserved",
+            "reserved body",
+        )
+        result_path = tmp_path / "result.json"
+        monkeypatch.setenv(runner.RESULT_PATH_ENV, str(result_path))
+
+        assert runner.run_bot(bot_factory=lambda: bot, max_retries=1) is True
+
+        payload = json.loads(result_path.read_text())
+        assert payload == {
+            "body": "reserved body",
+            "outcome": "reserved",
+            "subject": "Lifetime Bot - Reserved",
+            "success": True,
+        }
+
+    def test_skips_inline_notifications_when_disabled(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        bot = MagicMock()
+        bot.reserve_class.return_value = _result(RegistrationOutcome.RESERVED)
+        bot.build_outcome_notification.return_value = (
+            "Lifetime Bot - Reserved",
+            "reserved body",
+        )
+        result_path = tmp_path / "result.json"
+        monkeypatch.setenv(runner.RESULT_PATH_ENV, str(result_path))
+        monkeypatch.setenv(runner.INLINE_NOTIFICATIONS_ENV, "false")
+
+        assert runner.run_bot(bot_factory=lambda: bot, max_retries=1) is True
+
+        bot.send_notification.assert_not_called()
+        payload = json.loads(result_path.read_text())
+        assert payload["subject"] == "Lifetime Bot - Reserved"
+
+    def test_writes_failure_result_payload_when_notifications_disabled(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        bot = MagicMock()
+        bot.reserve_class.side_effect = LifetimeAPIError("boom", status_code=500)
+        bot.build_failure_notification.return_value = (
+            "Lifetime Bot - Failure",
+            "failure body",
+        )
+        result_path = tmp_path / "result.json"
+        monkeypatch.setenv(runner.RESULT_PATH_ENV, str(result_path))
+        monkeypatch.setenv(runner.INLINE_NOTIFICATIONS_ENV, "false")
+
+        assert runner.run_bot(bot_factory=lambda: bot, max_retries=1) is False
+
+        bot.send_notification.assert_not_called()
+        payload = json.loads(result_path.read_text())
+        assert payload == {
+            "body": "Failed to reserve class after 1 attempts.\n\nfailure body",
+            "subject": "Lifetime Bot - All Attempts Failed",
+            "success": False,
+        }
