@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from unittest.mock import MagicMock, patch
 
 from lifetime_bot.config import EmailConfig, SMSConfig
@@ -9,6 +10,7 @@ from lifetime_bot.notifications import (
     EmailNotificationService,
     SMSNotificationService,
 )
+from lifetime_bot.notifications.email import DEFAULT_SMTP_TIMEOUT_SECONDS
 
 
 class TestEmailNotificationIntegration:
@@ -40,7 +42,7 @@ class TestEmailNotificationIntegration:
         mock_smtp.assert_called_once_with(
             email_config.smtp_server,
             email_config.smtp_port,
-            timeout=5.0,
+            timeout=DEFAULT_SMTP_TIMEOUT_SECONDS,
         )
         mock_server.starttls.assert_called_once()
         mock_server.login.assert_called_once_with(
@@ -137,6 +139,24 @@ class TestSMSNotificationIntegration:
 
 class TestNotificationServiceInteraction:
     """Integration tests for notification service interaction patterns."""
+
+    @patch("lifetime_bot.notifications.email.smtplib.SMTP")
+    def test_email_service_honors_timeout_override(
+        self, mock_smtp: MagicMock, email_config: EmailConfig
+    ) -> None:
+        mock_server = MagicMock()
+        mock_smtp.return_value.__enter__.return_value = mock_server
+
+        with patch.dict(os.environ, {"SMTP_TIMEOUT_SECONDS": "90"}, clear=False):
+            service = EmailNotificationService(email_config)
+            result = service.send("Test Notification", "Body")
+
+        assert result is True
+        mock_smtp.assert_called_once_with(
+            email_config.smtp_server,
+            email_config.smtp_port,
+            timeout=90.0,
+        )
 
     @patch("lifetime_bot.notifications.email.smtplib.SMTP")
     def test_email_service_can_send_independently(

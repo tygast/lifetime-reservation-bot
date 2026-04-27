@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -95,6 +96,10 @@ class ReservationService:
             if documents is None:
                 documents = self.fetch_required_documents(event_id)
             if documents is None:
+                _log_payload(
+                    "POST /event completion payload lacked recognized waiver/document ids",
+                    result.raw,
+                )
                 raise LifetimeAPIError(
                     "Registration requires completion, but no waiver/document ids "
                     "were available."
@@ -122,7 +127,13 @@ class ReservationService:
         except LifetimeAPIError as exc:
             print(f"Could not fetch registration info for required docs: {exc}")
             return None
-        return extract_required_document_ids(info)
+        documents = extract_required_document_ids(info)
+        if documents is None:
+            _log_payload(
+                "Registration info payload lacked recognized waiver/document ids",
+                info,
+            )
+        return documents
 
     def detect_existing_registration(
         self, event_id: str, *, context: str
@@ -175,3 +186,11 @@ def _find_registered_member(
         except (TypeError, ValueError):
             continue
     return None
+
+
+def _log_payload(label: str, payload: Any) -> None:
+    try:
+        rendered = json.dumps(payload, sort_keys=True, default=str)
+    except TypeError:
+        rendered = repr(payload)
+    print(f"{label}: {rendered}")

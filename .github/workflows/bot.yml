@@ -79,13 +79,10 @@ jobs:
           uv pip install --system -e .
 
       - name: Run Lifetime Bot
+        id: run-bot-step
+        continue-on-error: true
         run: python -u -m lifetime_bot
         env:
-          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
-          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
-          EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
-          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
           LIFETIME_USERNAME: ${{ secrets.LIFETIME_USERNAME }}
           LIFETIME_PASSWORD: ${{ secrets.LIFETIME_PASSWORD }}
           LIFETIME_CLUB_NAME: ${{ vars.LIFETIME_CLUB_NAME }}
@@ -95,9 +92,76 @@ jobs:
           TARGET_DATE: ${{ vars.TARGET_DATE }}
           START_TIME: ${{ vars.START_TIME }}
           END_TIME: ${{ vars.END_TIME }}
-          NOTIFICATION_METHOD: ${{ vars.NOTIFICATION_METHOD }}
+          LIFETIME_BOT_INLINE_NOTIFICATIONS: "false"
+          LIFETIME_BOT_RESULT_PATH: ${{ runner.temp }}/lifetime-bot-result.json
           TARGET_LOCAL_TIME: ${{ vars.TARGET_LOCAL_TIME }}
           TIMEZONE: ${{ vars.TIMEZONE }}
+
+      - name: Ensure final result payload exists
+        if: always()
+        run: |
+          if [ ! -f "$RESULT_PATH" ]; then
+            printf '%s\n' \
+              '{' \
+              '  "success": false,' \
+              '  "subject": "Lifetime Bot - All Attempts Failed",' \
+              '  "body": "Failed to reserve class. The run ended before a final result payload was generated."' \
+              '}' > "$RESULT_PATH"
+          fi
+        env:
+          RESULT_PATH: ${{ runner.temp }}/lifetime-bot-result.json
+
+      - name: Upload bot result payload
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lifetime-bot-result
+          path: ${{ runner.temp }}/lifetime-bot-result.json
+
+      - name: Finalize bot job status
+        if: steps.run-bot-step.outcome == 'failure'
+        run: exit 1
+
+  notify:
+    runs-on: ubuntu-latest
+    needs: [check-schedule, run-bot]
+    if: always() && needs.run-bot.result != 'skipped' && (github.event_name != 'schedule' || needs.check-schedule.outputs.should_run == 'true')
+    environment: ${{ github.event_name == 'schedule' && 'prod' || inputs.env }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+
+      - name: Install Dependencies
+        run: |
+          uv pip install --system -e .
+
+      - name: Download bot result payload
+        uses: actions/download-artifact@v8
+        with:
+          name: lifetime-bot-result
+          path: ${{ runner.temp }}
+
+      - name: Send final notification
+        run: python -m lifetime_bot.notify_result "${{ runner.temp }}/lifetime-bot-result.json"
+        env:
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          NOTIFICATION_METHOD: ${{ vars.NOTIFICATION_METHOD }}
+          NOTIFICATION_TIMEOUT_SECONDS: ${{ vars.NOTIFICATION_TIMEOUT_SECONDS }}
+          SMTP_TIMEOUT_SECONDS: ${{ vars.SMTP_TIMEOUT_SECONDS }}
           TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
           TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
           TWILIO_FROM_NUMBER: ${{ secrets.TWILIO_FROM_NUMBER }}
