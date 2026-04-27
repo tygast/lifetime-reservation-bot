@@ -10,7 +10,7 @@ from typing import Protocol
 import requests
 
 from lifetime_bot.bootstrap import create_bot
-from lifetime_bot.errors import LifetimeAPIError
+from lifetime_bot.errors import LifetimeAPIError, ReservationAttemptError
 from lifetime_bot.models import RegistrationResult
 
 
@@ -18,6 +18,12 @@ class ReservationBot(Protocol):
     """Boundary for executing a reservation attempt."""
 
     def reserve_class(self) -> RegistrationResult: ...
+
+    def build_outcome_notification(
+        self, result: RegistrationResult
+    ) -> tuple[str, str]: ...
+
+    def build_failure_notification(self, exc: BaseException) -> tuple[str, str]: ...
 
     def send_notification(self, subject: str, message: str) -> object: ...
 
@@ -55,6 +61,7 @@ def run_bot(
             bot = bot_factory()
             result = bot.reserve_class()
             if result.is_terminal:
+                _send_outcome_notification(bot, result)
                 print(
                     f"Attempt {retry_count + 1}/{max_retries} succeeded in "
                     f"{time.perf_counter() - attempt_started:.2f}s"
@@ -78,15 +85,11 @@ def run_bot(
 
             should_retry = retry_count < max_retries and _should_retry(exc)
             if not should_retry:
-                try:
-                    if bot and hasattr(bot, "send_notification"):
-                        bot.send_notification(
-                            "Lifetime Bot - All Attempts Failed",
-                            f"Failed to reserve class after {max_retries} attempts. "
-                            f"Last error: {exc!s}",
-                        )
-                except Exception as notify_error:
-                    print(f"Could not send failure notification: {notify_error}")
+                _send_terminal_failure_notification(
+                    bot,
+                    exc,
+                    max_retries=max_retries,
+                )
                 break
             print(
                 f"Waiting {retry_delay:g} seconds before retry "
@@ -99,6 +102,8 @@ def run_bot(
 
 
 def _should_retry(exc: BaseException) -> bool:
+    if isinstance(exc, ReservationAttemptError):
+        return _should_retry(exc.cause)
     if isinstance(exc, RetryableReservationError):
         return True
     if isinstance(exc, (requests.ConnectionError, requests.Timeout)):
@@ -106,3 +111,29 @@ def _should_retry(exc: BaseException) -> bool:
     if isinstance(exc, LifetimeAPIError):
         return exc.is_retryable
     return False
+
+
+def _send_outcome_notification(bot: ReservationBot, result: RegistrationResult) -> None:
+    try:
+        subject, body = bot.build_outcome_notification(result)
+        bot.send_notification(subject, body)
+    except Exception as notify_error:
+        print(f"Could not send outcome notification: {notify_error}")
+
+
+def _send_terminal_failure_notification(
+    bot: ReservationBot | None,
+    exc: BaseException,
+    *,
+    max_retries: int,
+) -> None:
+    if bot is None:
+        return
+    try:
+        subject, body = bot.build_failure_notification(exc)
+        summary_body = (
+            f"Failed to reserve class after {max_retries} attempts.\n\n{body}"
+        )
+        bot.send_notification("Lifetime Bot - All Attempts Failed", summary_body)
+    except Exception as notify_error:
+        print(f"Could not send failure notification: {notify_error}")

@@ -12,7 +12,7 @@ import pytest
 
 from lifetime_bot.auth import AuthenticatedSession
 from lifetime_bot.config import BotConfig
-from lifetime_bot.errors import LifetimeAPIError
+from lifetime_bot.errors import LifetimeAPIError, ReservationAttemptError
 from lifetime_bot.models import RegistrationOutcome, RegistrationResult, SessionTokens
 from lifetime_bot.notifier import NotificationDispatchResult
 from lifetime_bot.orchestrator import ReservationOrchestrator
@@ -151,8 +151,7 @@ class TestReserveClass:
             target_date="2026-04-29",
         )
         harness.reservation_service.reserve_event.assert_called_once_with("ZXhlcnA6ZXZ0")
-        harness.notifier.send.assert_called_once()
-        assert harness.notifier.send.call_args.args[0] == "Lifetime Bot - Reserved"
+        harness.notifier.send.assert_not_called()
 
     def test_logs_reservation_outcome_before_notification_phase(
         self,
@@ -179,27 +178,59 @@ class TestReserveClass:
         captured = capsys.readouterr().out
         assert "Reservation outcome: Reserved." in captured
         assert captured.index("Reservation outcome: Reserved.") < captured.index(
-            "Reservation flow finished"
+            "Reservation flow core completed"
         )
 
 
 class TestReserveClassFailures:
-    def test_notifies_on_login_failure(self, harness: BotHarness) -> None:
+    def test_wraps_login_failure_without_notifying(self, harness: BotHarness) -> None:
         harness.authenticator.login.side_effect = RuntimeError("login broke")
 
-        with pytest.raises(RuntimeError):
+        with pytest.raises(ReservationAttemptError, match="login broke") as exc_info:
             harness.bot.reserve_class()
 
-        harness.notifier.send.assert_called_once()
-        assert harness.notifier.send.call_args.args[0] == "Lifetime Bot - Login Failed"
+        assert exc_info.value.phase == "login"
+        assert isinstance(exc_info.value.cause, RuntimeError)
+        harness.notifier.send.assert_not_called()
 
-    def test_notifies_on_missing_class(self, harness: BotHarness) -> None:
+    def test_wraps_missing_class_failure_without_notifying(
+        self, harness: BotHarness
+    ) -> None:
         harness.reservation_service.find_target_event.return_value = None
         harness.bot.config.target_class.date = "2026-04-29"
         harness.bot.config.run_on_schedule = False
 
-        with pytest.raises(LifetimeAPIError):
+        with pytest.raises(ReservationAttemptError) as exc_info:
             harness.bot.reserve_class()
 
         harness.reservation_service.reserve_event.assert_not_called()
-        assert harness.notifier.send.call_args.args[0] == "Lifetime Bot - Failure"
+        assert exc_info.value.phase == "reservation"
+        assert isinstance(exc_info.value.cause, LifetimeAPIError)
+        harness.notifier.send.assert_not_called()
+
+    def test_builds_outcome_notification(self, harness: BotHarness) -> None:
+        harness.bot.config.target_class.date = "2026-04-29"
+        harness.bot.config.run_on_schedule = False
+
+        subject, body = harness.bot.build_outcome_notification(
+            _result(RegistrationOutcome.RESERVED, raw_status="reserved")
+        )
+
+        assert subject == "Lifetime Bot - Reserved"
+        assert "Your class was successfully reserved!" in body
+
+    def test_builds_failure_notification_from_wrapped_error(
+        self, harness: BotHarness
+    ) -> None:
+        harness.bot.config.target_class.date = "2026-04-29"
+        harness.bot.config.run_on_schedule = False
+
+        subject, body = harness.bot.build_failure_notification(
+            ReservationAttemptError(
+                "login",
+                RuntimeError("login broke"),
+            )
+        )
+
+        assert subject == "Lifetime Bot - Login Failed"
+        assert "Error (RuntimeError): login broke" in body

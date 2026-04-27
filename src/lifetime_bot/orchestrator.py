@@ -9,7 +9,7 @@ from typing import Protocol
 
 from lifetime_bot.auth import AuthenticatedSession
 from lifetime_bot.config import BotConfig, ClassConfig, NotificationMethod
-from lifetime_bot.errors import LifetimeAPIError
+from lifetime_bot.errors import LifetimeAPIError, ReservationAttemptError
 from lifetime_bot.messages import describe_failure, describe_outcome, format_class_details
 from lifetime_bot.models import ClassEvent, RegistrationResult
 from lifetime_bot.notifier import NotificationDispatchResult
@@ -81,8 +81,8 @@ class ReservationOrchestrator:
             )
             print(f"Auth completed in {time.perf_counter() - auth_started:.2f}s.")
         except Exception as exc:
-            self._report_failure(exc, class_details, phase="login")
-            raise
+            self._log_failure(exc, phase="login")
+            raise ReservationAttemptError("login", exc) from exc
 
         reservation_service = self.reservation_service_factory(authenticated)
         try:
@@ -114,17 +114,30 @@ class ReservationOrchestrator:
                 f"{time.perf_counter() - registration_started:.2f}s."
             )
         except Exception as exc:
-            self._report_failure(exc, class_details, phase="reservation")
-            raise
+            self._log_failure(exc, phase="reservation")
+            raise ReservationAttemptError("reservation", exc) from exc
 
-        subject, body = describe_outcome(result, class_details)
+        subject, _ = describe_outcome(result, class_details)
         print(f"Reservation outcome: {subject.removeprefix('Lifetime Bot - ')}.")
         print(
             f"Reservation flow core completed in {time.perf_counter() - started:.2f}s."
         )
-        self.send_notification(subject, body)
-        print(f"Reservation flow finished in {time.perf_counter() - started:.2f}s.")
         return result
+
+    def build_outcome_notification(
+        self, result: RegistrationResult
+    ) -> tuple[str, str]:
+        class_details = self._class_details()
+        return describe_outcome(result, class_details)
+
+    def build_failure_notification(self, exc: BaseException) -> tuple[str, str]:
+        class_details = self._class_details()
+        phase = "reservation"
+        root_exc = exc
+        if isinstance(exc, ReservationAttemptError):
+            phase = exc.phase
+            root_exc = exc.cause
+        return describe_failure(root_exc, class_details=class_details, phase=phase)
 
     def send_notification(
         self, subject: str, message: str
@@ -141,11 +154,10 @@ class ReservationOrchestrator:
             self.config.target_class.date,
         )
 
-    def _report_failure(
-        self, exc: BaseException, class_details: str, *, phase: str
-    ) -> None:
+    def _class_details(self) -> str:
+        return format_class_details(self.config, self._get_target_date())
+
+    def _log_failure(self, exc: BaseException, *, phase: str) -> None:
         error_type = type(exc).__name__
         print(f"{phase.title()} failed ({error_type}): {exc}")
         print(traceback.format_exc())
-        subject, body = describe_failure(exc, class_details=class_details, phase=phase)
-        self.send_notification(subject, body)

@@ -14,7 +14,7 @@ from lifetime_bot.bootstrap import (
     create_reservation_service,
 )
 from lifetime_bot.config import BotConfig, EmailConfig, SMSConfig
-from lifetime_bot.errors import LifetimeAPIError
+from lifetime_bot.errors import LifetimeAPIError, ReservationAttemptError
 from lifetime_bot.messages import describe_failure, describe_outcome, format_class_details
 from lifetime_bot.models import (
     ClassEvent,
@@ -50,6 +50,7 @@ __all__ = [
     "run_bot",
     "RetryableReservationError",
     "LifetimeAPIError",
+    "ReservationAttemptError",
     "format_class_details",
     "describe_outcome",
     "describe_failure",
