@@ -12,6 +12,7 @@ from lifetime_bot.config import (
     ClassConfig,
     ClubConfig,
     EmailConfig,
+    NotificationConfig,
     SMSConfig,
 )
 
@@ -241,7 +242,6 @@ class TestBotConfig:
             "LIFETIME_USERNAME": "test@example.com",
             "LIFETIME_PASSWORD": "testpassword",
             "LIFETIME_CLUB_NAME": "Test Club",
-            "LIFETIME_CLUB_STATE": "TX",
             "NOTIFICATION_METHOD": "invalid",
         }
         with patch.dict(os.environ, env, clear=True):
@@ -254,7 +254,6 @@ class TestBotConfig:
             "LIFETIME_USERNAME": "test@example.com",
             "LIFETIME_PASSWORD": "testpassword",
             "LIFETIME_CLUB_NAME": "Test Club",
-            "LIFETIME_CLUB_STATE": "TX",
             "NOTIFICATION_METHOD": "both",
         }
         with patch.dict(os.environ, env, clear=True):
@@ -267,9 +266,31 @@ class TestBotConfig:
             "LIFETIME_USERNAME": "test@example.com",
             "LIFETIME_PASSWORD": "testpassword",
             "LIFETIME_CLUB_NAME": "Test Club",
-            "LIFETIME_CLUB_STATE": "TX",
             "RUN_ON_SCHEDULE": "true",
         }
         with patch.dict(os.environ, env, clear=True):
             config = BotConfig.from_env(reload_env=False)
             assert config.run_on_schedule is True
+
+    def test_exposes_notification_subset(self, bot_config: BotConfig) -> None:
+        notification_config = bot_config.notifications
+
+        assert notification_config.email is bot_config.email
+        assert notification_config.sms is bot_config.sms
+        assert notification_config.method == bot_config.notification_method
+
+
+class TestNotificationConfig:
+    def test_from_env(self, mock_env: dict[str, str]) -> None:
+        assert mock_env
+        config = NotificationConfig.from_env(reload_env=False)
+
+        assert config.email.sender == "test@gmail.com"
+        assert config.sms.account_sid == "ACtest123456789"
+        assert config.method == "email"
+
+    def test_invalid_notification_method_defaults_to_email(self) -> None:
+        env = {"NOTIFICATION_METHOD": "invalid"}
+        with patch.dict(os.environ, env, clear=True):
+            config = NotificationConfig.from_env(reload_env=False)
+            assert config.method == "email"

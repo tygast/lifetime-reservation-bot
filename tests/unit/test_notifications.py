@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -12,6 +13,7 @@ from lifetime_bot.notifications import (
     NotificationService,
     SMSNotificationService,
 )
+from lifetime_bot.notifications.email import DEFAULT_SMTP_TIMEOUT_SECONDS
 
 
 class TestNotificationService:
@@ -57,13 +59,31 @@ class TestEmailNotificationService:
         mock_smtp.assert_called_once_with(
             email_config.smtp_server,
             email_config.smtp_port,
-            timeout=5.0,
+            timeout=DEFAULT_SMTP_TIMEOUT_SECONDS,
         )
         mock_server.starttls.assert_called_once()
         mock_server.login.assert_called_once_with(
             email_config.sender, email_config.password
         )
         mock_server.send_message.assert_called_once()
+
+    @patch("lifetime_bot.notifications.email.smtplib.SMTP")
+    def test_send_uses_smtp_timeout_override(
+        self, mock_smtp: MagicMock, email_config: EmailConfig
+    ) -> None:
+        mock_server = MagicMock()
+        mock_smtp.return_value.__enter__.return_value = mock_server
+
+        service = EmailNotificationService(email_config)
+        with patch.dict(os.environ, {"SMTP_TIMEOUT_SECONDS": "42.5"}, clear=False):
+            result = service.send("Test Subject", "Test Message")
+
+        assert result is True
+        mock_smtp.assert_called_once_with(
+            email_config.smtp_server,
+            email_config.smtp_port,
+            timeout=42.5,
+        )
 
     @patch("lifetime_bot.notifications.email.smtplib.SMTP")
     def test_send_failure(

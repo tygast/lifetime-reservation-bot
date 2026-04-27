@@ -13,7 +13,7 @@ from lifetime_bot.bootstrap import (
     create_notifier,
     create_reservation_service,
 )
-from lifetime_bot.config import BotConfig, EmailConfig, SMSConfig
+from lifetime_bot.config import BotConfig, EmailConfig, NotificationConfig, SMSConfig
 from lifetime_bot.errors import LifetimeAPIError, ReservationAttemptError
 from lifetime_bot.messages import describe_failure, describe_outcome, format_class_details
 from lifetime_bot.models import (
@@ -45,6 +45,7 @@ __all__ = [
     "NotificationDispatchResult",
     "BotConfig",
     "EmailConfig",
+    "NotificationConfig",
     "SMSConfig",
     "LifetimeAPIClient",
     "run_bot",

@@ -55,7 +55,6 @@ class TestBotConfigIntegration:
             "LIFETIME_USERNAME": "user@example.com",
             "LIFETIME_PASSWORD": "password",
             "LIFETIME_CLUB_NAME": "Test Club",
-            "LIFETIME_CLUB_STATE": "CA",
             "RUN_ON_SCHEDULE": "true",
         }
         with patch.dict(os.environ, env, clear=True):
@@ -69,7 +68,6 @@ class TestBotConfigIntegration:
             "LIFETIME_USERNAME": "user@example.com",
             "LIFETIME_PASSWORD": "password",
             "LIFETIME_CLUB_NAME": "Test Club",
-            "LIFETIME_CLUB_STATE": "CA",
             "NOTIFICATION_METHOD": "sms",
             "TWILIO_ACCOUNT_SID": "ACtest123",
             "TWILIO_AUTH_TOKEN": "authtoken123",

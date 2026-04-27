@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from lifetime_bot.bootstrap import create_notifier
-from lifetime_bot.config import BotConfig
+from lifetime_bot.config import NotificationConfig
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -21,9 +21,9 @@ def main(argv: list[str] | None = None) -> int:
     subject = str(payload["subject"])
     body = str(payload["body"])
 
-    config = BotConfig.from_env()
+    config = NotificationConfig.from_env()
     notifier = create_notifier(config)
-    notifier.send(subject, body, method=config.notification_method)
+    notifier.send(subject, body, method=config.method)
     return 0
 
 

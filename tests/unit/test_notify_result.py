@@ -20,14 +20,14 @@ class TestNotifyResult:
                     "body": "reserved body",
                     "success": True,
                 }
-            )
+        )
         )
         config = MagicMock()
-        config.notification_method = "email"
+        config.method = "email"
         notifier = MagicMock()
 
         monkeypatch.setattr(
-            "lifetime_bot.notify_result.BotConfig.from_env",
+            "lifetime_bot.notify_result.NotificationConfig.from_env",
             MagicMock(return_value=config),
         )
         monkeypatch.setattr(

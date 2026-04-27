@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -9,7 +10,7 @@ from email.mime.text import MIMEText
 from lifetime_bot.config import EmailConfig
 from lifetime_bot.notifications.base import NotificationService
 
-SMTP_TIMEOUT_SECONDS = 5.0
+DEFAULT_SMTP_TIMEOUT_SECONDS = 300.0
 
 
 class EmailNotificationService(NotificationService):
@@ -51,7 +52,7 @@ class EmailNotificationService(NotificationService):
             with smtplib.SMTP(
                 self.config.smtp_server,
                 self.config.smtp_port,
-                timeout=SMTP_TIMEOUT_SECONDS,
+                timeout=_get_smtp_timeout_seconds(),
             ) as server:
                 server.starttls()
                 server.login(self.config.sender, self.config.password)
@@ -61,3 +62,17 @@ class EmailNotificationService(NotificationService):
         except Exception as e:
             print(f"Failed to send email: {e}")
             return False
+
+
+def _get_smtp_timeout_seconds() -> float:
+    raw_value = os.getenv("SMTP_TIMEOUT_SECONDS")
+    if not raw_value:
+        return DEFAULT_SMTP_TIMEOUT_SECONDS
+    try:
+        return float(raw_value)
+    except ValueError:
+        print(
+            "Invalid SMTP_TIMEOUT_SECONDS value "
+            f"{raw_value!r}; using default {DEFAULT_SMTP_TIMEOUT_SECONDS:.1f}s."
+        )
+        return DEFAULT_SMTP_TIMEOUT_SECONDS

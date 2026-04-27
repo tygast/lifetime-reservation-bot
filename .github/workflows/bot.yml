@@ -83,11 +83,6 @@ jobs:
         continue-on-error: true
         run: python -u -m lifetime_bot
         env:
-          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
-          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
-          EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
-          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
           LIFETIME_USERNAME: ${{ secrets.LIFETIME_USERNAME }}
           LIFETIME_PASSWORD: ${{ secrets.LIFETIME_PASSWORD }}
           LIFETIME_CLUB_NAME: ${{ vars.LIFETIME_CLUB_NAME }}
@@ -97,15 +92,10 @@ jobs:
           TARGET_DATE: ${{ vars.TARGET_DATE }}
           START_TIME: ${{ vars.START_TIME }}
           END_TIME: ${{ vars.END_TIME }}
-          NOTIFICATION_METHOD: ${{ vars.NOTIFICATION_METHOD }}
           LIFETIME_BOT_INLINE_NOTIFICATIONS: "false"
           LIFETIME_BOT_RESULT_PATH: ${{ runner.temp }}/lifetime-bot-result.json
           TARGET_LOCAL_TIME: ${{ vars.TARGET_LOCAL_TIME }}
           TIMEZONE: ${{ vars.TIMEZONE }}
-          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
-          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
-          TWILIO_FROM_NUMBER: ${{ secrets.TWILIO_FROM_NUMBER }}
-          SMS_NUMBER: ${{ secrets.SMS_NUMBER }}
 
       - name: Ensure final result payload exists
         if: always()
@@ -170,18 +160,9 @@ jobs:
           EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
           SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          LIFETIME_USERNAME: ${{ secrets.LIFETIME_USERNAME }}
-          LIFETIME_PASSWORD: ${{ secrets.LIFETIME_PASSWORD }}
-          LIFETIME_CLUB_NAME: ${{ vars.LIFETIME_CLUB_NAME }}
-          RUN_ON_SCHEDULE: ${{ vars.RUN_ON_SCHEDULE }}
-          TARGET_CLASS: ${{ vars.TARGET_CLASS }}
-          TARGET_INSTRUCTOR: ${{ vars.TARGET_INSTRUCTOR }}
-          TARGET_DATE: ${{ vars.TARGET_DATE }}
-          START_TIME: ${{ vars.START_TIME }}
-          END_TIME: ${{ vars.END_TIME }}
           NOTIFICATION_METHOD: ${{ vars.NOTIFICATION_METHOD }}
-          TARGET_LOCAL_TIME: ${{ vars.TARGET_LOCAL_TIME }}
-          TIMEZONE: ${{ vars.TIMEZONE }}
+          NOTIFICATION_TIMEOUT_SECONDS: ${{ vars.NOTIFICATION_TIMEOUT_SECONDS }}
+          SMTP_TIMEOUT_SECONDS: ${{ vars.SMTP_TIMEOUT_SECONDS }}
           TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
           TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
           TWILIO_FROM_NUMBER: ${{ secrets.TWILIO_FROM_NUMBER }}
