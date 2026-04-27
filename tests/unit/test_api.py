@@ -387,6 +387,23 @@ class TestRegister:
         assert result.needs_complete is True
         assert result.required_documents == (77,)
 
+    def test_parses_pending_waitlist_like_response(self) -> None:
+        payload = {
+            "regId": 186195720,
+            "regStatus": "pending",
+            "hasWaitlist": True,
+            "hasSpots": False,
+            "openSpots": 0,
+            "totalWaitlisted": 13,
+        }
+        client, _ = _client_with_mock(_FakeResponse(payload=payload))
+
+        result = client.register("evt")
+
+        assert result.outcome is RegistrationOutcome.PENDING_COMPLETION
+        assert result.was_waitlisted is False
+        assert result.needs_complete is True
+
     def test_raises_when_response_missing_id(self) -> None:
         client, _ = _client_with_mock(_FakeResponse(payload={"status": "reserved"}))
         with pytest.raises(LifetimeAPIError):
