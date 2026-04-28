@@ -1,9 +1,19 @@
 name: Life Time Reservation Bot
+run-name: >-
+  ${{
+    github.event_name == 'schedule'
+    && format('schedule {0}', github.event.schedule)
+    || github.event_name == 'workflow_dispatch'
+    && format('manual {0} on {1}', inputs.env, inputs.runner)
+    || github.event_name
+  }}
 
 on:
   schedule:
     - cron: '17 12 * * 0-4'  # 7:17 AM CDT (summer, UTC-5) — 2h43m buffer before 10 AM CT target
+    - cron: '37 12 * * 0-4'  # 7:37 AM CDT backup — 2h23m buffer before 10 AM CT target
     - cron: '17 13 * * 0-4'  # 7:17 AM CST (winter, UTC-6) — 2h43m buffer before 10 AM CT target
+    - cron: '37 13 * * 0-4'  # 7:37 AM CST backup — 2h23m buffer before 10 AM CT target
   workflow_dispatch:  # Allows manual trigger
     inputs:
         env:
@@ -28,29 +38,122 @@ jobs:
   check-schedule:
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule'
+    permissions:
+      actions: read
     outputs:
-      should_run: ${{ steps.dst-check.outputs.should_run }}
+      should_run: ${{ steps.schedule-decision.outputs.should_run }}
     steps:
       - name: Check DST and determine correct schedule
         id: dst-check
         run: |
           CURRENT_TZ=$(TZ='America/Chicago' date '+%Z')
+          CURRENT_LOCAL_DATE=$(TZ='America/Chicago' date '+%Y-%m-%d')
           CRON="${{ github.event.schedule }}"
           echo "=== Workflow Timing ==="
           echo "Cron trigger:       $CRON"
           echo "Actual start (UTC): $(date -u '+%Y-%m-%d %H:%M:%S')"
           echo "Actual start (CT):  $(TZ='America/Chicago' date '+%Y-%m-%d %H:%M:%S %Z')"
           echo "======================"
-          if [ "$CRON" = "17 12 * * 0-4" ] && [ "$CURRENT_TZ" = "CST" ]; then
+          echo "current_tz=$CURRENT_TZ" >> "$GITHUB_OUTPUT"
+          echo "current_local_date=$CURRENT_LOCAL_DATE" >> "$GITHUB_OUTPUT"
+
+          if [ "$CURRENT_TZ" = "CST" ] && { [ "$CRON" = "17 12 * * 0-4" ] || [ "$CRON" = "37 12 * * 0-4" ]; }; then
             echo "Skipping: CDT schedule triggered during CST"
             echo "should_run=false" >> "$GITHUB_OUTPUT"
-          elif [ "$CRON" = "17 13 * * 0-4" ] && [ "$CURRENT_TZ" = "CDT" ]; then
+          elif [ "$CURRENT_TZ" = "CDT" ] && { [ "$CRON" = "17 13 * * 0-4" ] || [ "$CRON" = "37 13 * * 0-4" ]; }; then
             echo "Skipping: CST schedule triggered during CDT"
             echo "should_run=false" >> "$GITHUB_OUTPUT"
           else
             echo "Correct schedule for $CURRENT_TZ — proceeding"
             echo "should_run=true" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Skip duplicate scheduled run for the active Chicago day
+        id: duplicate-check
+        if: steps.dst-check.outputs.should_run == 'true'
+        uses: actions/github-script@v8
+        env:
+          CURRENT_TZ: ${{ steps.dst-check.outputs.current_tz }}
+          CURRENT_LOCAL_DATE: ${{ steps.dst-check.outputs.current_local_date }}
+        with:
+          script: |
+            const runId = Number(process.env.GITHUB_RUN_ID);
+            const currentTz = process.env.CURRENT_TZ;
+            const currentLocalDate = process.env.CURRENT_LOCAL_DATE;
+            const activeTitlesByTz = {
+              CDT: [
+                "schedule 17 12 * * 0-4",
+                "schedule 37 12 * * 0-4",
+              ],
+              CST: [
+                "schedule 17 13 * * 0-4",
+                "schedule 37 13 * * 0-4",
+              ],
+            };
+            const activeTitles = activeTitlesByTz[currentTz] ?? [];
+
+            if (activeTitles.length === 0) {
+              core.warning(
+                `Unrecognized Chicago timezone "${currentTz}". Allowing this run to proceed.`
+              );
+              core.setOutput("should_run", "true");
+              return;
+            }
+
+            const formatter = new Intl.DateTimeFormat("en-CA", {
+              timeZone: "America/Chicago",
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
+            });
+
+            try {
+              const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: "bot.yml",
+                event: "schedule",
+                per_page: 100,
+              });
+
+              const duplicates = runs
+                .filter((run) => run.id !== runId)
+                .filter((run) => activeTitles.includes(run.display_title))
+                .filter((run) => formatter.format(new Date(run.created_at)) === currentLocalDate)
+                .filter((run) => {
+                  if (run.status !== "completed") {
+                    return true;
+                  }
+                  return run.conclusion === "success";
+                })
+                .sort((left, right) => {
+                  return new Date(left.created_at) - new Date(right.created_at);
+                });
+
+              if (duplicates.length > 0) {
+                const first = duplicates[0];
+                core.notice(
+                  `Skipping duplicate scheduled run because ${first.display_title} ` +
+                  `(#${first.id}) is already ${first.status}` +
+                  `${first.conclusion ? `/${first.conclusion}` : ""} for ${currentLocalDate}.`
+                );
+                core.setOutput("should_run", "false");
+                return;
+              }
+            } catch (error) {
+              core.warning(
+                `Duplicate guard could not inspect existing workflow runs: ${error.message}`
+              );
+            }
+
+            core.setOutput("should_run", "true");
+
+      - name: Finalize schedule decision
+        id: schedule-decision
+        if: always()
+        run: echo "should_run=$FINAL_SHOULD_RUN" >> "$GITHUB_OUTPUT"
+        env:
+          FINAL_SHOULD_RUN: ${{ steps.duplicate-check.outputs.should_run || steps.dst-check.outputs.should_run }}
 
   run-bot:
     runs-on: ${{ github.event_name == 'schedule' && 'macos-latest' || inputs.runner }}
