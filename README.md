@@ -6,8 +6,8 @@ An automated bot that helps you reserve classes at Life Time clubs. The bot can 
 
 - Signs in through Life Time's direct member-login APIs without browser automation
 - Calls `api.lifetimefitness.com` directly to list classes, reserve, waitlist, and accept required waivers
-- Sends notifications via email and/or SMS with the specific outcome (reserved / waitlisted / already reserved / failed)
-- Configurable retry logic (up to 3 attempts)
+- Sends notifications via email and/or SMS with the final outcome (reserved / waitlisted / already reserved / terminal failure)
+- Configurable retry logic (defaults to 3 attempts)
 - Can be scheduled to run at specific local times with automatic DST handling
 - Runs automatically via GitHub Actions or locally
 
@@ -18,7 +18,7 @@ An automated bot that helps you reserve classes at Life Time clubs. The bot can 
 3. **List classes.** `GET /ux/web-schedules/v2/schedules/classes?locations=...&start=...&end=...` → JSON list. The bot filters by class name / instructor / start-time / end-time.
 4. **Register.** `POST /sys/registrations/V3/ux/event` with the event id. The server decides reservation vs waitlist based on capacity.
 5. **Finalize if needed.** `PUT /sys/registrations/V3/ux/event/{id}/complete` with any required document (waiver) acceptances.
-6. **Notify.** Email/SMS with subject indicating reserved vs waitlisted vs failed.
+6. **Notify.** Email/SMS with the final reservation outcome or terminal failure summary.
 
 ## Project Structure
 
@@ -26,13 +26,17 @@ An automated bot that helps you reserve classes at Life Time clubs. The bot can 
 lifetime-reservation-bot/
 ├── src/
 │   └── lifetime_bot/
-│       ├── __init__.py          # Package exports
-│       ├── __main__.py          # CLI entry point with retry + scheduling
-│       ├── orchestrator.py      # Orchestrator: auth -> schedule -> reserve -> notify
+│       ├── __main__.py          # CLI entry point and scheduled wait logic
+│       ├── bootstrap.py         # Production wiring for auth, reservations, and notifications
+│       ├── auth.py              # Direct member-login authentication
 │       ├── api.py               # HTTP client for api.lifetimefitness.com
+│       ├── orchestrator.py      # Auth -> lookup -> reserve coordination
+│       ├── reservations.py      # Class lookup, registration, and waiver completion
+│       ├── runner.py            # Retry loop and final result payload generation
+│       ├── notify_result.py     # Sends a precomputed result payload
+│       ├── notifier.py          # Timeout-bounded email/SMS fan-out
 │       ├── config.py            # Configuration dataclasses
 │       ├── notifications/
-│       │   ├── base.py          # Abstract notification service
 │       │   ├── email.py         # Email notification service
 │       │   └── sms.py           # SMS notification service (via Twilio)
 │       └── utils/
@@ -49,7 +53,8 @@ lifetime-reservation-bot/
 ## Requirements
 
 - Python 3.9 or higher
-- Gmail account (or other SMTP provider) for sending notifications
+- SMTP provider credentials if you want email notifications
+- Twilio credentials if you want SMS notifications
 
 ## Installation
 
@@ -59,7 +64,7 @@ lifetime-reservation-bot/
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/lifetime-reservation-bot.git
+git clone https://github.com/tygast/lifetime-reservation-bot.git
 cd lifetime-reservation-bot
 
 # Install uv if you don't have it
@@ -73,7 +78,7 @@ uv pip install -e .
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/lifetime-reservation-bot.git
+git clone https://github.com/tygast/lifetime-reservation-bot.git
 cd lifetime-reservation-bot
 
 # Create and activate a virtual environment
@@ -143,6 +148,7 @@ LIFETIME_CLUB_NAME=San Antonio 281
 TARGET_CLASS=Pickleball
 
 # Instructor's name as shown (typically "FirstName L" format, no period after initial)
+# Leave blank, or use values like "any", "none", or "ignore" to disable instructor filtering.
 TARGET_INSTRUCTOR=John D
 
 # Target date in YYYY-MM-DD format
@@ -198,6 +204,12 @@ RUN_ON_SCHEDULE=false
 # Use local time + timezone - DST is handled automatically
 TARGET_LOCAL_TIME=10:00:00
 TIMEZONE=America/Chicago
+
+# Advanced runtime options
+MAX_RETRIES=3
+RETRY_DELAY_SECONDS=5
+NOTIFICATION_TIMEOUT_SECONDS=300
+SMTP_TIMEOUT_SECONDS=300
 ```
 
 ## Email Setup (Gmail)
@@ -287,8 +299,8 @@ RUN_ON_SCHEDULE=false python -m lifetime_bot
 3. **Finds target class**: Searches the schedule API for the class matching your criteria (name, instructor, time)
 4. **Reserves the class**: Calls the reservation API (or identifies that the account is already booked)
 5. **Handles waivers**: For classes like Pickleball, accepts the waiver automatically
-6. **Sends notification**: Emails/texts you the result (reserved, waitlisted, already reserved, or failed)
-7. **Retries on failure**: Attempts up to 3 times with short delays between retries
+6. **Sends notification**: Emails/texts you the final outcome (reserved, waitlisted, already reserved, or terminal failure)
+7. **Retries on failure**: Attempts up to `MAX_RETRIES` times with short delays between retries (defaults to 3)
 
 ## GitHub Actions (Automated Scheduling)
 
@@ -297,10 +309,13 @@ The bot can run automatically using GitHub Actions.
 ### Workflow Schedule
 
 The default schedule in `.github/workflows/bot.yml`:
-- **When**: 7:17 AM CT, Sunday through Thursday (DST-aware)
-- **Cron**: `17 12 * * 0-4` during CDT (12:17 UTC) and `17 13 * * 0-4` during CST (13:17 UTC); a check-schedule step skips the wrong one based on the current TZ.
+- **When**: 7:17 AM CT and 7:37 AM CT, Sunday through Thursday (DST-aware)
+- **Cron**: `17 12 * * 0-4` and `37 12 * * 0-4` during CDT; `17 13 * * 0-4` and `37 13 * * 0-4` during CST
+- **Guard rails**: `check-schedule` skips the wrong DST pair and also skips the backup run if an earlier valid scheduled run for that Chicago day is already active or already succeeded
 
 The runner starts early to absorb GitHub Actions scheduling delays (which regularly exceed an hour during weekday business hours); the bot then sleeps internally until `TARGET_LOCAL_TIME` (10:00 CT by default) before attempting the reservation 8 days in advance.
+
+For GitHub Actions runs, inline notifications are disabled during the reservation job. The bot writes a final JSON result payload, uploads it as an artifact, and the separate `notify` job sends the final email/SMS notification.
 
 ### Setting Up GitHub Actions
 
@@ -336,6 +351,8 @@ The runner starts early to absorb GitHub Actions scheduling delays (which regula
    | `NOTIFICATION_METHOD` | `email`, `sms`, or `both` |
    | `TARGET_LOCAL_TIME` | Local time to run (e.g., `10:00:00`) |
    | `TIMEZONE` | IANA timezone (e.g., `America/Chicago`) |
+   | `NOTIFICATION_TIMEOUT_SECONDS` | Optional overall per-channel notification timeout in seconds |
+   | `SMTP_TIMEOUT_SECONDS` | Optional SMTP connection timeout in seconds |
 
 4. **Create Environments** (Settings → Environments):
    - Create `dev` environment for testing
@@ -348,14 +365,15 @@ You can manually run the workflow:
 1. Go to Actions → Life Time Reservation Bot
 2. Click "Run workflow"
 3. Select the environment (`dev` or `prod`)
-4. Click "Run workflow"
+4. Select the runner (`macos-latest` by default)
+5. Click "Run workflow"
 
 ## How Class Matching Works
 
-The bot matches classes using these criteria (ALL must match):
+The bot matches classes using these criteria:
 
 1. **Class Name**: The `TARGET_CLASS` must be **contained** in the class title (case-insensitive)
-2. **Instructor**: The `TARGET_INSTRUCTOR` must be **contained** in the class info (case-insensitive)
+2. **Instructor**: If provided, the `TARGET_INSTRUCTOR` must be **contained** in the class info (case-insensitive). If you leave it blank, or use values like `any`, `none`, or `ignore`, the instructor filter is disabled.
 3. **Start Time**: Must exactly match `START_TIME` (e.g., "9:00 AM")
 4. **End Time**: Must exactly match `END_TIME` (e.g., "10:00 AM")
 
@@ -411,16 +429,15 @@ The bot sends different notifications based on the outcome:
 | `Lifetime Bot - Reserved` | Class successfully reserved |
 | `Lifetime Bot - Added to Waitlist` | Class was full and you were added to the waitlist |
 | `Lifetime Bot - Already Reserved` | Class was already on your account |
-| `Lifetime Bot - Login Failed` | Login/authentication failed before lookup or reservation |
-| `Lifetime Bot - Failure` | Failed to reserve (includes error details) |
-| `Lifetime Bot - All Attempts Failed` | Failed after 3 retry attempts |
+| `Lifetime Bot - All Attempts Failed` | The bot exhausted its allowed attempts or failed before producing a terminal reservation result |
 
 Each notification includes:
 - Class name
 - Instructor
 - Date
 - Time
-- Error message (if applicable)
+- Club name
+- Error message and phase details (if applicable)
 
 ## Troubleshooting
 
@@ -487,10 +504,14 @@ python -m ruff format src/
 The codebase follows a modular architecture:
 
 - **`config.py`**: Dataclasses for configuration (`BotConfig`, `EmailConfig`, `SMSConfig`, `ClassConfig`, `ClubConfig`)
-- **`orchestrator.py`**: Main `ReservationOrchestrator` class with reservation coordination logic
+- **`bootstrap.py`**: Runtime wiring for production auth, reservation, and notification collaborators
+- **`orchestrator.py`**: Main `ReservationOrchestrator` class with auth/lookup/reservation coordination logic
+- **`runner.py`**: Retry-aware execution, result payload writing, and inline notification control
+- **`notifier.py`**: Notification fan-out with per-channel timeout handling
+- **`notify_result.py`**: CLI helper that sends the final notification from a saved payload
 - **`notifications/`**: Abstract `NotificationService` with email and SMS implementations
 - **`utils/timing.py`**: UTC time waiting and date calculation utilities
-- **`__main__.py`**: CLI entry point with retry logic
+- **`__main__.py`**: CLI entry point and scheduled wait logic
 
 ## Security Notes
 
