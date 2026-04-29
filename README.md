@@ -309,9 +309,9 @@ The bot can run automatically using GitHub Actions.
 ### Workflow Schedule
 
 The default schedule in `.github/workflows/bot.yml`:
-- **When**: 7:17 AM CT and 7:37 AM CT, Sunday through Thursday (DST-aware)
-- **Cron**: `17 12 * * 0-4` and `37 12 * * 0-4` during CDT; `17 13 * * 0-4` and `37 13 * * 0-4` during CST
-- **Guard rails**: `check-schedule` skips the wrong DST pair and also skips the backup run if an earlier valid scheduled run for that Chicago day is already active or already succeeded
+- **When**: 7:17 AM, 7:37 AM, 8:17 AM, 8:37 AM, and 9:17 AM CT, Sunday through Thursday
+- **Timezone**: Each schedule entry uses `timezone: "America/Chicago"`, so GitHub handles CDT/CST transitions directly
+- **Guard rails**: `check-schedule` skips a backup slot if an earlier scheduled run for that Chicago day is already active or already succeeded
 
 The runner starts early to absorb GitHub Actions scheduling delays (which regularly exceed an hour during weekday business hours); the bot then sleeps internally until `TARGET_LOCAL_TIME` (10:00 CT by default) before attempting the reservation 8 days in advance.
 

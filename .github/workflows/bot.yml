@@ -2,18 +2,31 @@ name: Life Time Reservation Bot
 run-name: >-
   ${{
     github.event_name == 'schedule'
-    && format('schedule {0}', github.event.schedule)
+    && (
+      github.event.schedule == '17 7 * * 0-4' && 'Scheduled (CT primary)'
+      || github.event.schedule == '37 7 * * 0-4' && 'Scheduled (CT backup 1)'
+      || github.event.schedule == '17 8 * * 0-4' && 'Scheduled (CT backup 2)'
+      || github.event.schedule == '37 8 * * 0-4' && 'Scheduled (CT backup 3)'
+      || github.event.schedule == '17 9 * * 0-4' && 'Scheduled (CT final backup)'
+      || format('Scheduled ({0})', github.event.schedule)
+    )
     || github.event_name == 'workflow_dispatch'
-    && format('manual {0} on {1}', inputs.env, inputs.runner)
+    && format('Manual ({0}, {1})', inputs.env, inputs.runner)
     || github.event_name
   }}
 
 on:
   schedule:
-    - cron: '17 12 * * 0-4'  # 7:17 AM CDT (summer, UTC-5) — 2h43m buffer before 10 AM CT target
-    - cron: '37 12 * * 0-4'  # 7:37 AM CDT backup — 2h23m buffer before 10 AM CT target
-    - cron: '17 13 * * 0-4'  # 7:17 AM CST (winter, UTC-6) — 2h43m buffer before 10 AM CT target
-    - cron: '37 13 * * 0-4'  # 7:37 AM CST backup — 2h23m buffer before 10 AM CT target
+    - cron: '17 7 * * 0-4'   # 7:17 AM CT primary — 2h43m buffer before 10 AM CT target
+      timezone: 'America/Chicago'
+    - cron: '37 7 * * 0-4'   # 7:37 AM CT backup 1 — 2h23m buffer before 10 AM CT target
+      timezone: 'America/Chicago'
+    - cron: '17 8 * * 0-4'   # 8:17 AM CT backup 2 — 1h43m buffer before 10 AM CT target
+      timezone: 'America/Chicago'
+    - cron: '37 8 * * 0-4'   # 8:37 AM CT backup 3 — 1h23m buffer before 10 AM CT target
+      timezone: 'America/Chicago'
+    - cron: '17 9 * * 0-4'   # 9:17 AM CT final backup — 43m buffer before 10 AM CT target
+      timezone: 'America/Chicago'
   workflow_dispatch:  # Allows manual trigger
     inputs:
         env:
@@ -41,12 +54,11 @@ jobs:
     permissions:
       actions: read
     outputs:
-      should_run: ${{ steps.schedule-decision.outputs.should_run }}
+      should_run: ${{ steps.duplicate-check.outputs.should_run }}
     steps:
-      - name: Check DST and determine correct schedule
-        id: dst-check
+      - name: Log workflow timing
+        id: schedule-timing
         run: |
-          CURRENT_TZ=$(TZ='America/Chicago' date '+%Z')
           CURRENT_LOCAL_DATE=$(TZ='America/Chicago' date '+%Y-%m-%d')
           CRON="${{ github.event.schedule }}"
           echo "=== Workflow Timing ==="
@@ -54,51 +66,17 @@ jobs:
           echo "Actual start (UTC): $(date -u '+%Y-%m-%d %H:%M:%S')"
           echo "Actual start (CT):  $(TZ='America/Chicago' date '+%Y-%m-%d %H:%M:%S %Z')"
           echo "======================"
-          echo "current_tz=$CURRENT_TZ" >> "$GITHUB_OUTPUT"
           echo "current_local_date=$CURRENT_LOCAL_DATE" >> "$GITHUB_OUTPUT"
-
-          if [ "$CURRENT_TZ" = "CST" ] && { [ "$CRON" = "17 12 * * 0-4" ] || [ "$CRON" = "37 12 * * 0-4" ]; }; then
-            echo "Skipping: CDT schedule triggered during CST"
-            echo "should_run=false" >> "$GITHUB_OUTPUT"
-          elif [ "$CURRENT_TZ" = "CDT" ] && { [ "$CRON" = "17 13 * * 0-4" ] || [ "$CRON" = "37 13 * * 0-4" ]; }; then
-            echo "Skipping: CST schedule triggered during CDT"
-            echo "should_run=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "Correct schedule for $CURRENT_TZ — proceeding"
-            echo "should_run=true" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Skip duplicate scheduled run for the active Chicago day
         id: duplicate-check
-        if: steps.dst-check.outputs.should_run == 'true'
         uses: actions/github-script@v8
         env:
-          CURRENT_TZ: ${{ steps.dst-check.outputs.current_tz }}
-          CURRENT_LOCAL_DATE: ${{ steps.dst-check.outputs.current_local_date }}
+          CURRENT_LOCAL_DATE: ${{ steps.schedule-timing.outputs.current_local_date }}
         with:
           script: |
             const runId = Number(process.env.GITHUB_RUN_ID);
-            const currentTz = process.env.CURRENT_TZ;
             const currentLocalDate = process.env.CURRENT_LOCAL_DATE;
-            const activeTitlesByTz = {
-              CDT: [
-                "schedule 17 12 * * 0-4",
-                "schedule 37 12 * * 0-4",
-              ],
-              CST: [
-                "schedule 17 13 * * 0-4",
-                "schedule 37 13 * * 0-4",
-              ],
-            };
-            const activeTitles = activeTitlesByTz[currentTz] ?? [];
-
-            if (activeTitles.length === 0) {
-              core.warning(
-                `Unrecognized Chicago timezone "${currentTz}". Allowing this run to proceed.`
-              );
-              core.setOutput("should_run", "true");
-              return;
-            }
 
             const formatter = new Intl.DateTimeFormat("en-CA", {
               timeZone: "America/Chicago",
@@ -118,7 +96,6 @@ jobs:
 
               const duplicates = runs
                 .filter((run) => run.id !== runId)
-                .filter((run) => activeTitles.includes(run.display_title))
                 .filter((run) => formatter.format(new Date(run.created_at)) === currentLocalDate)
                 .filter((run) => {
                   if (run.status !== "completed") {
@@ -147,13 +124,6 @@ jobs:
             }
 
             core.setOutput("should_run", "true");
-
-      - name: Finalize schedule decision
-        id: schedule-decision
-        if: always()
-        run: echo "should_run=$FINAL_SHOULD_RUN" >> "$GITHUB_OUTPUT"
-        env:
-          FINAL_SHOULD_RUN: ${{ steps.duplicate-check.outputs.should_run || steps.dst-check.outputs.should_run }}
 
   run-bot:
     runs-on: ${{ github.event_name == 'schedule' && 'macos-latest' || inputs.runner }}
