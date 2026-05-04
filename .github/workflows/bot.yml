@@ -86,33 +86,50 @@ jobs:
             });
 
             try {
-              const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                workflow_id: "bot.yml",
-                event: "schedule",
-                per_page: 100,
-              });
+              const runs = await github.paginate(
+                github.rest.actions.listWorkflowRuns,
+                {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  workflow_id: "bot.yml",
+                  event: "schedule",
+                  per_page: 100,
+                },
+                (response) => response.data.workflow_runs,
+              );
 
-              const duplicates = runs
+              const candidates = runs
                 .filter((run) => run.id !== runId)
                 .filter((run) => formatter.format(new Date(run.created_at)) === currentLocalDate)
-                .filter((run) => {
-                  if (run.status !== "completed") {
-                    return true;
-                  }
-                  return run.conclusion === "success";
-                })
                 .sort((left, right) => {
                   return new Date(left.created_at) - new Date(right.created_at);
                 });
 
-              if (duplicates.length > 0) {
-                const first = duplicates[0];
+              for (const run of candidates) {
+                const jobs = await github.paginate(
+                  github.rest.actions.listJobsForWorkflowRun,
+                  {
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    run_id: run.id,
+                    per_page: 100,
+                  },
+                  (response) => response.data.jobs,
+                );
+                const runBotJob = jobs.find((job) => job.name === "run-bot");
+                if (!runBotJob) {
+                  continue;
+                }
+                const isActive = runBotJob.status !== "completed";
+                const isSuccessful = runBotJob.conclusion === "success";
+                if (!isActive && !isSuccessful) {
+                  continue;
+                }
                 core.notice(
-                  `Skipping duplicate scheduled run because ${first.display_title} ` +
-                  `(#${first.id}) is already ${first.status}` +
-                  `${first.conclusion ? `/${first.conclusion}` : ""} for ${currentLocalDate}.`
+                  `Skipping duplicate scheduled run because ${run.display_title} ` +
+                  `(#${run.id}) has run-bot ${runBotJob.status}` +
+                  `${runBotJob.conclusion ? `/${runBotJob.conclusion}` : ""} ` +
+                  `for ${currentLocalDate}.`
                 );
                 core.setOutput("should_run", "false");
                 return;
