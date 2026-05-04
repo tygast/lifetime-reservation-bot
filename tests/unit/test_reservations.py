@@ -288,6 +288,7 @@ class TestReservationServiceReserveEvent:
     ) -> None:
         client = MagicMock()
         client.member_id = 110137193
+        sleep = MagicMock()
         client.get_registration_info.side_effect = [
             LifetimeAPIError("not found", status_code=404),
             {"registeredMembers": [], "unregisteredMembers": [{"agreementId": 77}]},
@@ -306,12 +307,17 @@ class TestReservationServiceReserveEvent:
             LifetimeAPIError,
             match="did not confirm a reserved or waitlisted outcome",
         ):
-            ReservationService(client).reserve_event("evt")
+            ReservationService(
+                client,
+                post_complete_confirmation_attempts=1,
+                sleep=sleep,
+            ).reserve_event("evt")
 
         client.complete_registration.assert_called_once_with(
             101,
             accepted_documents=[],
         )
+        sleep.assert_not_called()
         captured = capsys.readouterr().out
         assert (
             "Registration info payload lacked recognized waiver/document ids: "
@@ -321,3 +327,38 @@ class TestReservationServiceReserveEvent:
             "POST /event completion payload lacked recognized waiver/document ids: "
             '{"regId": 101, "regStatus": "pending"}'
         ) in captured
+
+    def test_retries_post_complete_verification_until_reserved(self) -> None:
+        client = MagicMock()
+        client.member_id = 110137193
+        sleep = MagicMock()
+        client.get_registration_info.side_effect = [
+            LifetimeAPIError("not found", status_code=404),
+            {
+                "registeredMembers": [],
+                "unregisteredMembers": [{"id": 110137193, "name": "Tyler"}],
+            },
+            {"registeredMembers": [{"id": 110137193, "name": "Tyler"}]},
+        ]
+        client.register.return_value = RegistrationResult(
+            registration_id=101,
+            outcome=RegistrationOutcome.PENDING_COMPLETION,
+            raw_status="pending",
+            needs_complete=True,
+            required_documents=(77,),
+            raw={"regId": 101, "regStatus": "pending"},
+        )
+
+        result = ReservationService(
+            client,
+            post_complete_confirmation_attempts=2,
+            post_complete_confirmation_delay_seconds=0.5,
+            sleep=sleep,
+        ).reserve_event("evt")
+
+        assert result.outcome is RegistrationOutcome.RESERVED
+        client.complete_registration.assert_called_once_with(
+            101,
+            accepted_documents=[77],
+        )
+        sleep.assert_called_once_with(0.5)

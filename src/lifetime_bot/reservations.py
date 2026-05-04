@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import time
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -12,12 +14,31 @@ from lifetime_bot.errors import LifetimeAPIError
 from lifetime_bot.models import ClassEvent, RegistrationOutcome, RegistrationResult
 from lifetime_bot.parsers import extract_required_document_ids, match_class
 
+POST_COMPLETE_CONFIRMATION_ATTEMPTS = 6
+POST_COMPLETE_CONFIRMATION_DELAY_SECONDS = 2.0
+
 
 class ReservationService:
     """Encapsulates class lookup and reservation completion behavior."""
 
-    def __init__(self, client: LifetimeAPIClient) -> None:
+    def __init__(
+        self,
+        client: LifetimeAPIClient,
+        *,
+        post_complete_confirmation_attempts: int = POST_COMPLETE_CONFIRMATION_ATTEMPTS,
+        post_complete_confirmation_delay_seconds: float = (
+            POST_COMPLETE_CONFIRMATION_DELAY_SECONDS
+        ),
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
         self.client = client
+        self.post_complete_confirmation_attempts = max(
+            1, post_complete_confirmation_attempts
+        )
+        self.post_complete_confirmation_delay_seconds = max(
+            0.0, post_complete_confirmation_delay_seconds
+        )
+        self.sleep = sleep
 
     def find_target_event(
         self, *, club_name: str, target_class: ClassConfig, target_date: str
@@ -110,9 +131,7 @@ class ReservationService:
                 result.registration_id,
                 accepted_documents=accepted_documents,
             )
-            verified = self.detect_existing_registration(
-                event_id, context="post-complete"
-            )
+            verified = self._confirm_post_complete_registration(event_id)
             if verified is None:
                 raise LifetimeAPIError(
                     "PUT /complete succeeded, but follow-up registration info did "
@@ -198,6 +217,30 @@ class ReservationService:
             f"({self.client.member_id}) is already reserved for event {event_id}."
         )
         return RegistrationResult.already_reserved(info)
+
+    def _confirm_post_complete_registration(
+        self, event_id: str
+    ) -> RegistrationResult | None:
+        for attempt in range(1, self.post_complete_confirmation_attempts + 1):
+            verified = self.detect_existing_registration(
+                event_id,
+                context=(
+                    "post-complete"
+                    f" attempt {attempt}/{self.post_complete_confirmation_attempts}"
+                ),
+            )
+            if verified is not None:
+                return verified
+            if attempt == self.post_complete_confirmation_attempts:
+                return None
+            print(
+                "Registration state is not visible yet after PUT /complete; "
+                f"waiting {self.post_complete_confirmation_delay_seconds:g} seconds "
+                f"before verification retry {attempt + 1}/"
+                f"{self.post_complete_confirmation_attempts}."
+            )
+            self.sleep(self.post_complete_confirmation_delay_seconds)
+        return None
 
 
 def _find_registered_member(
