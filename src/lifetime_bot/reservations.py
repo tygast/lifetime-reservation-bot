@@ -16,6 +16,8 @@ from lifetime_bot.parsers import extract_required_document_ids, match_class
 
 POST_COMPLETE_CONFIRMATION_ATTEMPTS = 6
 POST_COMPLETE_CONFIRMATION_DELAY_SECONDS = 2.0
+POST_ERROR_CONFIRMATION_ATTEMPTS = 6
+POST_ERROR_CONFIRMATION_DELAY_SECONDS = 2.0
 
 
 class ReservationService:
@@ -29,6 +31,10 @@ class ReservationService:
         post_complete_confirmation_delay_seconds: float = (
             POST_COMPLETE_CONFIRMATION_DELAY_SECONDS
         ),
+        post_error_confirmation_attempts: int = POST_ERROR_CONFIRMATION_ATTEMPTS,
+        post_error_confirmation_delay_seconds: float = (
+            POST_ERROR_CONFIRMATION_DELAY_SECONDS
+        ),
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self.client = client
@@ -37,6 +43,10 @@ class ReservationService:
         )
         self.post_complete_confirmation_delay_seconds = max(
             0.0, post_complete_confirmation_delay_seconds
+        )
+        self.post_error_confirmation_attempts = max(1, post_error_confirmation_attempts)
+        self.post_error_confirmation_delay_seconds = max(
+            0.0, post_error_confirmation_delay_seconds
         )
         self.sleep = sleep
 
@@ -100,16 +110,24 @@ class ReservationService:
                     f"POST /event failed ({exc}); "
                     "checking registration info before treating it as fatal."
                 )
-                if exc.status_code not in {409, 500}:
+                if not _should_confirm_post_error(exc):
                     raise
-                result = self.detect_existing_registration(
-                    event_id, context="post-error check"
+                result = self._confirm_registration_state(
+                    event_id,
+                    context_prefix="post-error check",
+                    attempts=self.post_error_confirmation_attempts,
+                    delay_seconds=self.post_error_confirmation_delay_seconds,
+                    waiting_reason=(
+                        "Registration state is not visible yet after POST /event "
+                        "error"
+                    ),
                 )
                 if result is None:
                     raise exc
                 print(
-                    "POST /event returned an already-booked style error, "
-                    "and follow-up registration info shows the class is already reserved."
+                    "POST /event returned an already-booked style or transient error, "
+                    "and follow-up registration info shows the class is already "
+                    "reserved or waitlisted."
                 )
 
         if result.needs_complete:
@@ -221,25 +239,37 @@ class ReservationService:
     def _confirm_post_complete_registration(
         self, event_id: str
     ) -> RegistrationResult | None:
-        for attempt in range(1, self.post_complete_confirmation_attempts + 1):
+        return self._confirm_registration_state(
+            event_id,
+            context_prefix="post-complete",
+            attempts=self.post_complete_confirmation_attempts,
+            delay_seconds=self.post_complete_confirmation_delay_seconds,
+            waiting_reason="Registration state is not visible yet after PUT /complete",
+        )
+
+    def _confirm_registration_state(
+        self,
+        event_id: str,
+        *,
+        context_prefix: str,
+        attempts: int,
+        delay_seconds: float,
+        waiting_reason: str,
+    ) -> RegistrationResult | None:
+        for attempt in range(1, attempts + 1):
             verified = self.detect_existing_registration(
                 event_id,
-                context=(
-                    "post-complete"
-                    f" attempt {attempt}/{self.post_complete_confirmation_attempts}"
-                ),
+                context=f"{context_prefix} attempt {attempt}/{attempts}",
             )
             if verified is not None:
                 return verified
-            if attempt == self.post_complete_confirmation_attempts:
+            if attempt == attempts:
                 return None
             print(
-                "Registration state is not visible yet after PUT /complete; "
-                f"waiting {self.post_complete_confirmation_delay_seconds:g} seconds "
-                f"before verification retry {attempt + 1}/"
-                f"{self.post_complete_confirmation_attempts}."
+                f"{waiting_reason}; waiting {delay_seconds:g} seconds before "
+                f"verification retry {attempt + 1}/{attempts}."
             )
-            self.sleep(self.post_complete_confirmation_delay_seconds)
+            self.sleep(delay_seconds)
         return None
 
 
@@ -292,6 +322,10 @@ def _log_payload(label: str, payload: Any) -> None:
     except TypeError:
         rendered = repr(payload)
     print(f"{label}: {rendered}")
+
+
+def _should_confirm_post_error(exc: LifetimeAPIError) -> bool:
+    return exc.status_code in {400, 409, 500}
 
 
 def _resolve_post_complete_result(

@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import requests
 
 from lifetime_bot import runner
-from lifetime_bot.errors import LifetimeAPIError
+from lifetime_bot.errors import LifetimeAPIError, ReservationAttemptError
 from lifetime_bot.models import RegistrationOutcome, RegistrationResult
 
 
@@ -227,6 +227,31 @@ class TestRunBot:
         payload = json.loads(result_path.read_text())
         assert payload == {
             "body": "Failed to reserve class after 1 attempts.\n\nfailure body",
+            "error_message": "boom",
+            "error_type": "LifetimeAPIError",
             "subject": "Lifetime Bot - All Attempts Failed",
             "success": False,
         }
+
+    def test_writes_failure_phase_and_root_error_to_result_payload(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        bot = MagicMock()
+        bot.reserve_class.side_effect = ReservationAttemptError(
+            "reservation",
+            LifetimeAPIError("downstream boom", status_code=500),
+        )
+        bot.build_failure_notification.return_value = (
+            "Lifetime Bot - Failure",
+            "failure body",
+        )
+        result_path = tmp_path / "result.json"
+        monkeypatch.setenv(runner.RESULT_PATH_ENV, str(result_path))
+        monkeypatch.setenv(runner.INLINE_NOTIFICATIONS_ENV, "false")
+
+        assert runner.run_bot(bot_factory=lambda: bot, max_retries=1) is False
+
+        payload = json.loads(result_path.read_text())
+        assert payload["error_phase"] == "reservation"
+        assert payload["error_type"] == "LifetimeAPIError"
+        assert payload["error_message"] == "downstream boom"
