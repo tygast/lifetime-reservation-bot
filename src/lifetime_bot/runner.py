@@ -105,6 +105,9 @@ def run_bot(
                     success=False,
                     subject=subject,
                     body=body,
+                    error_phase=_failure_phase(exc),
+                    error_type=type(_root_cause(exc)).__name__,
+                    error_message=str(_root_cause(exc)),
                 )
                 if bot is not None:
                     _send_notification(bot, subject, body, context="failure")
@@ -173,6 +176,18 @@ def _build_terminal_failure_notification(
         )
 
 
+def _root_cause(exc: BaseException) -> BaseException:
+    if isinstance(exc, ReservationAttemptError):
+        return _root_cause(exc.cause)
+    return exc
+
+
+def _failure_phase(exc: BaseException) -> str | None:
+    if isinstance(exc, ReservationAttemptError):
+        return exc.phase
+    return None
+
+
 def _inline_notifications_enabled() -> bool:
     raw_value = os.getenv(INLINE_NOTIFICATIONS_ENV, "true").strip().lower()
     return raw_value not in {"0", "false", "no", "off"}
@@ -184,6 +199,9 @@ def _record_final_result(
     subject: str,
     body: str,
     outcome: str | None = None,
+    error_phase: str | None = None,
+    error_type: str | None = None,
+    error_message: str | None = None,
 ) -> None:
     result_path = os.getenv(RESULT_PATH_ENV, "").strip()
     if not result_path:
@@ -195,6 +213,12 @@ def _record_final_result(
     }
     if outcome is not None:
         payload["outcome"] = outcome
+    if error_phase is not None:
+        payload["error_phase"] = error_phase
+    if error_type is not None:
+        payload["error_type"] = error_type
+    if error_message is not None:
+        payload["error_message"] = error_message
     path = Path(result_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")

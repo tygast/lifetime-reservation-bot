@@ -281,7 +281,34 @@ class TestReservationServiceReserveEvent:
         )
 
         with pytest.raises(LifetimeAPIError, match="POST /event returned 500"):
-            ReservationService(client).reserve_event("evt")
+            ReservationService(
+                client,
+                post_error_confirmation_attempts=1,
+            ).reserve_event("evt")
+
+    def test_retries_post_error_confirmation_until_already_reserved(self) -> None:
+        client = MagicMock()
+        client.member_id = 110137193
+        sleep = MagicMock()
+        client.get_registration_info.side_effect = [
+            {"registeredMembers": []},
+            {"registeredMembers": []},
+            {"registeredMembers": [{"id": 110137193, "name": "Tyler"}]},
+        ]
+        client.register.side_effect = LifetimeAPIError(
+            "POST /event returned 400", status_code=400
+        )
+
+        result = ReservationService(
+            client,
+            post_error_confirmation_attempts=2,
+            post_error_confirmation_delay_seconds=0.5,
+            sleep=sleep,
+        ).reserve_event("evt")
+
+        assert result.outcome is RegistrationOutcome.ALREADY_RESERVED
+        client.complete_registration.assert_not_called()
+        sleep.assert_called_once_with(0.5)
 
     def test_raises_when_required_documents_cannot_be_found(
         self, capsys: pytest.CaptureFixture[str]

@@ -86,17 +86,22 @@ jobs:
             });
 
             try {
-              const runs = await github.paginate(
-                github.rest.actions.listWorkflowRuns,
-                {
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  workflow_id: "bot.yml",
-                  event: "schedule",
-                  per_page: 100,
-                },
-                (response) => response.data.workflow_runs,
-              );
+              const response = await github.rest.actions.listWorkflowRuns({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: "bot.yml",
+                event: "schedule",
+                per_page: 100,
+              });
+
+              const runs = Array.isArray(response.data.workflow_runs)
+                ? response.data.workflow_runs.filter(
+                    (run) =>
+                      run &&
+                      typeof run.id === "number" &&
+                      typeof run.created_at === "string"
+                  )
+                : [];
 
               const candidates = runs
                 .filter((run) => run.id !== runId)
@@ -106,19 +111,24 @@ jobs:
                 });
 
               for (const run of candidates) {
-                const jobs = await github.paginate(
-                  github.rest.actions.listJobsForWorkflowRun,
-                  {
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    run_id: run.id,
-                    per_page: 100,
-                  },
-                  (response) => response.data.jobs,
-                );
+                const jobsResponse = await github.rest.actions.listJobsForWorkflowRun({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  run_id: run.id,
+                  per_page: 100,
+                });
+                const jobs = Array.isArray(jobsResponse.data.jobs)
+                  ? jobsResponse.data.jobs.filter(Boolean)
+                  : [];
                 const runBotJob = jobs.find((job) => job.name === "run-bot");
                 if (!runBotJob) {
-                  continue;
+                  core.notice(
+                    `Skipping duplicate scheduled run because ${run.display_title} ` +
+                    `(#${run.id}) already exists for ${currentLocalDate}, but its ` +
+                    `run-bot job is not visible yet.`
+                  );
+                  core.setOutput("should_run", "false");
+                  return;
                 }
                 const isActive = runBotJob.status !== "completed";
                 const isSuccessful = runBotJob.conclusion === "success";
@@ -208,6 +218,10 @@ jobs:
           name: lifetime-bot-result
           path: ${{ runner.temp }}/lifetime-bot-result.json
 
+      - name: Summarize reservation result
+        if: always()
+        run: python -m lifetime_bot.notify_result --summary-only "${{ runner.temp }}/lifetime-bot-result.json"
+
       - name: Finalize bot job status
         if: steps.run-bot-step.outcome == 'failure'
         run: exit 1
@@ -242,6 +256,8 @@ jobs:
           path: ${{ runner.temp }}
 
       - name: Send final notification
+        id: send-final-notification
+        continue-on-error: true
         run: python -m lifetime_bot.notify_result "${{ runner.temp }}/lifetime-bot-result.json"
         env:
           EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
@@ -256,3 +272,13 @@ jobs:
           TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
           TWILIO_FROM_NUMBER: ${{ secrets.TWILIO_FROM_NUMBER }}
           SMS_NUMBER: ${{ secrets.SMS_NUMBER }}
+
+      - name: Report notification delivery outcome
+        if: always()
+        run: |
+          echo "Notification delivery step outcome: $NOTIFY_OUTCOME"
+          if [ "$NOTIFY_OUTCOME" != "success" ]; then
+            echo "::warning::Final notification delivery did not complete. Review the reservation summary above for the actual reservation outcome."
+          fi
+        env:
+          NOTIFY_OUTCOME: ${{ steps.send-final-notification.outcome }}
