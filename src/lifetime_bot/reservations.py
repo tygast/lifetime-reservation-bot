@@ -151,6 +151,22 @@ class ReservationService:
             )
             verified = self._confirm_post_complete_registration(event_id)
             if verified is None:
+                if _is_pending_waitlist_result(pending_result):
+                    print(
+                        "PUT /complete succeeded for a full class with waitlist enabled, "
+                        "but follow-up registration info did not expose the waitlist "
+                        "state yet; treating the completed pending registration as "
+                        "waitlisted."
+                    )
+                    result = RegistrationResult(
+                        registration_id=pending_result.registration_id,
+                        outcome=RegistrationOutcome.WAITLISTED,
+                        raw_status="waitlisted",
+                        needs_complete=False,
+                        required_documents=pending_result.required_documents,
+                        raw=pending_result.raw,
+                    )
+                    return result
                 raise LifetimeAPIError(
                     "PUT /complete succeeded, but follow-up registration info did "
                     "not confirm a reserved or waitlisted outcome."
@@ -314,6 +330,32 @@ def _waitlist_position(member: dict[str, Any]) -> int | None:
     if isinstance(position, str) and position.isdigit():
         return int(position)
     return None
+
+
+def _is_pending_waitlist_result(result: RegistrationResult) -> bool:
+    if not result.needs_complete:
+        return False
+    payload = result.raw
+    has_waitlist = payload.get("hasWaitlist") is True
+    has_no_spots = payload.get("hasSpots") is False
+    open_spots = payload.get("openSpots")
+    roster_full = _validation_rule_message(payload, "rosterLimitRule")
+    return has_waitlist and (
+        has_no_spots or open_spots == 0 or "full" in roster_full.lower()
+    )
+
+
+def _validation_rule_message(payload: dict[str, Any], rule_name: str) -> str:
+    validation = payload.get("validation")
+    if not isinstance(validation, dict):
+        return ""
+    rules = validation.get("rules")
+    if not isinstance(rules, dict):
+        return ""
+    rule = rules.get(rule_name)
+    if not isinstance(rule, dict):
+        return ""
+    return str(rule.get("errorMessage") or "")
 
 
 def _log_payload(label: str, payload: Any) -> None:
