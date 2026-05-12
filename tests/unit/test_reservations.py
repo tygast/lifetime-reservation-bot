@@ -235,6 +235,49 @@ class TestReservationServiceReserveEvent:
             accepted_documents=[],
         )
 
+    def test_treats_unconfirmed_pending_full_waitlist_completion_as_waitlisted(
+        self,
+    ) -> None:
+        client = MagicMock()
+        client.member_id = 110137193
+        stale_registration_info = {
+            "registeredMembers": [],
+            "unregisteredMembers": [{"id": 110137193, "name": "Tyler"}],
+            "registerCta": True,
+        }
+        client.get_registration_info.side_effect = [
+            stale_registration_info,
+            stale_registration_info,
+            stale_registration_info,
+        ]
+        client.register.return_value = RegistrationResult(
+            registration_id=101,
+            outcome=RegistrationOutcome.PENDING_COMPLETION,
+            raw_status="pending",
+            needs_complete=True,
+            required_documents=None,
+            raw={
+                "regId": 101,
+                "regStatus": "pending",
+                "hasWaitlist": True,
+                "hasSpots": False,
+                "openSpots": 0,
+                "totalWaitlisted": 3,
+            },
+        )
+
+        result = ReservationService(
+            client,
+            post_complete_confirmation_attempts=1,
+        ).reserve_event("evt")
+
+        assert result.outcome is RegistrationOutcome.WAITLISTED
+        assert result.registration_id == 101
+        client.complete_registration.assert_called_once_with(
+            101,
+            accepted_documents=[],
+        )
+
     def test_skips_post_when_already_reserved(self) -> None:
         client = MagicMock()
         client.member_id = 110137193

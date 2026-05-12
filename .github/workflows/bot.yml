@@ -3,11 +3,11 @@ run-name: >-
   ${{
     github.event_name == 'schedule'
     && (
-      github.event.schedule == '17 7 * * 0-4' && 'Scheduled (CT primary)'
-      || github.event.schedule == '37 7 * * 0-4' && 'Scheduled (CT backup 1)'
-      || github.event.schedule == '17 8 * * 0-4' && 'Scheduled (CT backup 2)'
-      || github.event.schedule == '37 8 * * 0-4' && 'Scheduled (CT backup 3)'
-      || github.event.schedule == '17 9 * * 0-4' && 'Scheduled (CT final backup)'
+      github.event.schedule == '11 5 * * 0-4' && 'Scheduled (CT primary)'
+      || github.event.schedule == '27 5 * * 0-4' && 'Scheduled (CT backup 1)'
+      || github.event.schedule == '43 5 * * 0-4' && 'Scheduled (CT backup 2)'
+      || github.event.schedule == '9 6 * * 0-4' && 'Scheduled (CT backup 3)'
+      || github.event.schedule == '25 6 * * 0-4' && 'Scheduled (CT final backup)'
       || format('Scheduled ({0})', github.event.schedule)
     )
     || github.event_name == 'workflow_dispatch'
@@ -17,15 +17,15 @@ run-name: >-
 
 on:
   schedule:
-    - cron: '17 7 * * 0-4'   # 7:17 AM CT primary — 2h43m buffer before 10 AM CT target
+    - cron: '11 5 * * 0-4'   # 5:11 AM CT primary — 4h49m buffer before 10 AM CT target
       timezone: 'America/Chicago'
-    - cron: '37 7 * * 0-4'   # 7:37 AM CT backup 1 — 2h23m buffer before 10 AM CT target
+    - cron: '27 5 * * 0-4'   # 5:27 AM CT backup 1 — 4h33m buffer before 10 AM CT target
       timezone: 'America/Chicago'
-    - cron: '17 8 * * 0-4'   # 8:17 AM CT backup 2 — 1h43m buffer before 10 AM CT target
+    - cron: '43 5 * * 0-4'   # 5:43 AM CT backup 2 — 4h17m buffer before 10 AM CT target
       timezone: 'America/Chicago'
-    - cron: '37 8 * * 0-4'   # 8:37 AM CT backup 3 — 1h23m buffer before 10 AM CT target
+    - cron: '9 6 * * 0-4'    # 6:09 AM CT backup 3 — 3h51m buffer before 10 AM CT target
       timezone: 'America/Chicago'
-    - cron: '17 9 * * 0-4'   # 9:17 AM CT final backup — 43m buffer before 10 AM CT target
+    - cron: '25 6 * * 0-4'   # 6:25 AM CT final backup — 3h35m buffer before 10 AM CT target
       timezone: 'America/Chicago'
   workflow_dispatch:  # Allows manual trigger
     inputs:
