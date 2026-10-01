@@ -10,6 +10,7 @@ run-name: >-
       || github.event.schedule == '25 5 * * 0-4' && 'Scheduled (CT final backup)'
       || format('Scheduled ({0})', github.event.schedule)
     )
+    || inputs.scheduled && 'Scheduled (Cloudflare dispatch)'
     || github.event_name == 'workflow_dispatch'
     && format('Manual ({0}, {1})', inputs.env, inputs.runner)
     || github.event_name
@@ -27,6 +28,8 @@ on:
       timezone: 'America/Chicago'
     - cron: '25 5 * * 0-4'   # 5:25 AM CT final backup - 3h35m buffer before 9 AM CT target
       timezone: 'America/Chicago'
+  # GitHub cron is best-effort and often hours late; scheduler/ (Cloudflare
+  # Worker) dispatches with scheduled=true at 9:30/9:45 CT as the primary trigger.
   workflow_dispatch:  # Allows manual trigger
     inputs:
         env:
@@ -46,11 +49,16 @@ on:
             - macos-latest
             - ubuntu-latest
             - windows-latest
+        scheduled:
+          description: "Treat as a scheduled run (set by the Cloudflare scheduler Worker)"
+          required: false
+          default: false
+          type: boolean
 
 jobs:
   check-schedule:
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' || inputs.scheduled
     permissions:
       actions: read
     outputs:
@@ -75,7 +83,6 @@ jobs:
           CURRENT_LOCAL_DATE: ${{ steps.schedule-timing.outputs.current_local_date }}
         with:
           script: |
-            const runId = Number(process.env.GITHUB_RUN_ID);
             const currentLocalDate = process.env.CURRENT_LOCAL_DATE;
 
             const formatter = new Intl.DateTimeFormat("en-CA", {
@@ -90,7 +97,6 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 workflow_id: "bot.yml",
-                event: "schedule",
                 per_page: 100,
               });
 
@@ -99,16 +105,21 @@ jobs:
                     (run) =>
                       run &&
                       typeof run.id === "number" &&
-                      typeof run.created_at === "string"
+                      typeof run.run_number === "number" &&
+                      typeof run.created_at === "string" &&
+                      typeof run.display_title === "string" &&
+                      run.display_title.startsWith("Scheduled")
                   )
                 : [];
 
+              // Only earlier runs on this branch count. If two runs reach this
+              // check at the same moment, the earlier one proceeds instead of
+              // both waiting on each other's run-bot job.
               const candidates = runs
-                .filter((run) => run.id !== runId)
+                .filter((run) => run.run_number < context.runNumber)
+                .filter((run) => run.head_branch === process.env.GITHUB_REF_NAME)
                 .filter((run) => formatter.format(new Date(run.created_at)) === currentLocalDate)
-                .sort((left, right) => {
-                  return new Date(left.created_at) - new Date(right.created_at);
-                });
+                .sort((left, right) => left.run_number - right.run_number);
 
               for (const run of candidates) {
                 const jobsResponse = await github.rest.actions.listJobsForWorkflowRun({
@@ -153,13 +164,13 @@ jobs:
             core.setOutput("should_run", "true");
 
   run-bot:
-    runs-on: ${{ github.event_name == 'schedule' && 'macos-latest' || inputs.runner }}
+    runs-on: ${{ (github.event_name == 'schedule' || inputs.scheduled) && 'macos-latest' || inputs.runner }}
     needs: check-schedule
-    if: always() && (github.event_name != 'schedule' || needs.check-schedule.outputs.should_run == 'true')
-    environment: ${{ github.event_name == 'schedule' && 'prod' || inputs.env }}
+    if: always() && (!(github.event_name == 'schedule' || inputs.scheduled) || needs.check-schedule.outputs.should_run == 'true')
+    environment: ${{ (github.event_name == 'schedule' || inputs.scheduled) && 'prod' || inputs.env }}
     steps:
       - name: Deploying in selected environment
-        run: echo "Deploying in ${{ github.event_name == 'schedule' && 'prod' || inputs.env }} on ${{ github.event_name == 'schedule' && 'macos-latest' || inputs.runner }}"
+        run: echo "Deploying in ${{ (github.event_name == 'schedule' || inputs.scheduled) && 'prod' || inputs.env }} on ${{ (github.event_name == 'schedule' || inputs.scheduled) && 'macos-latest' || inputs.runner }}"
 
       - name: Checkout Repository
         uses: actions/checkout@v5
@@ -229,8 +240,8 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     needs: [check-schedule, run-bot]
-    if: always() && needs.run-bot.result != 'skipped' && (github.event_name != 'schedule' || needs.check-schedule.outputs.should_run == 'true')
-    environment: ${{ github.event_name == 'schedule' && 'prod' || inputs.env }}
+    if: always() && needs.run-bot.result != 'skipped' && (!(github.event_name == 'schedule' || inputs.scheduled) || needs.check-schedule.outputs.should_run == 'true')
+    environment: ${{ (github.event_name == 'schedule' || inputs.scheduled) && 'prod' || inputs.env }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v5
