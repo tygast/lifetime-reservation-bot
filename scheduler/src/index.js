@@ -42,7 +42,7 @@ export async function dispatchWorkflow(env, fetchImpl = fetch) {
     },
     body: JSON.stringify({
       ref: env.GITHUB_REF,
-      inputs: { env: "prod", runner: "macos-latest", scheduled: true },
+      inputs: { env: "prod", runner: "macos-latest", scheduled: "true" },
     }),
   });
 

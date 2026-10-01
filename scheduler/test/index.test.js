@@ -37,7 +37,7 @@ test("dispatchWorkflow posts scheduled prod inputs to the workflow", async () =>
   assert.equal(request.init.headers.Authorization, "Bearer test-token");
   assert.deepEqual(JSON.parse(request.init.body), {
     ref: "main",
-    inputs: { env: "prod", runner: "macos-latest", scheduled: true },
+    inputs: { env: "prod", runner: "macos-latest", scheduled: "true" },
   });
 });
 

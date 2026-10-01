@@ -83,7 +83,6 @@ jobs:
           CURRENT_LOCAL_DATE: ${{ steps.schedule-timing.outputs.current_local_date }}
         with:
           script: |
-            const runId = Number(process.env.GITHUB_RUN_ID);
             const currentLocalDate = process.env.CURRENT_LOCAL_DATE;
 
             const formatter = new Intl.DateTimeFormat("en-CA", {
@@ -106,18 +105,21 @@ jobs:
                     (run) =>
                       run &&
                       typeof run.id === "number" &&
+                      typeof run.run_number === "number" &&
                       typeof run.created_at === "string" &&
                       typeof run.display_title === "string" &&
                       run.display_title.startsWith("Scheduled")
                   )
                 : [];
 
+              // Only earlier runs on this branch count. If two runs reach this
+              // check at the same moment, the earlier one proceeds instead of
+              // both waiting on each other's run-bot job.
               const candidates = runs
-                .filter((run) => run.id !== runId)
+                .filter((run) => run.run_number < context.runNumber)
+                .filter((run) => run.head_branch === process.env.GITHUB_REF_NAME)
                 .filter((run) => formatter.format(new Date(run.created_at)) === currentLocalDate)
-                .sort((left, right) => {
-                  return new Date(left.created_at) - new Date(right.created_at);
-                });
+                .sort((left, right) => left.run_number - right.run_number);
 
               for (const run of candidates) {
                 const jobsResponse = await github.rest.actions.listJobsForWorkflowRun({
