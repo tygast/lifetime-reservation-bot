@@ -1,6 +1,8 @@
 name = "lifetime-reservation-scheduler"
 main = "src/index.js"
 compatibility_date = "2026-09-01"
+# Cron-only Worker: no public workers.dev URL.
+workers_dev = false
 
 [vars]
 GITHUB_REPO = "tygast/lifetime-reservation-bot"
