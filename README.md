@@ -45,6 +45,7 @@ lifetime-reservation-bot/
 │   └── workflows/
 │       ├── bot.yml              # GitHub Actions workflow
 │       └── keepalive.yml        # Prevents workflow disabling after 60 days
+├── scheduler/                   # Cloudflare Worker that dispatches bot.yml on time
 ├── pyproject.toml               # Python project configuration
 ├── .env.example                 # Environment variables template
 └── README.md                    # This file
@@ -308,12 +309,30 @@ The bot can run automatically using GitHub Actions.
 
 ### Workflow Schedule
 
-The default schedule in `.github/workflows/bot.yml`:
-- **When**: 4:11 AM, 4:27 AM, 4:43 AM, 5:09 AM, and 5:25 AM CT, Sunday through Thursday
-- **Timezone**: Each schedule entry uses `timezone: "America/Chicago"`, so GitHub handles CDT/CST transitions directly
-- **Guard rails**: `check-schedule` skips a backup slot if an earlier scheduled run for that Chicago day is already active or already succeeded
+GitHub Actions `schedule` triggers are best-effort and routinely start hours late (6–8 hours on some weekdays in late September 2026), so the primary trigger is an external Cloudflare Worker in `scheduler/`:
 
-The runner starts early to absorb GitHub Actions scheduling delays (which can exceed three hours during weekday business hours); the bot then sleeps internally until `TARGET_LOCAL_TIME` before attempting the reservation 8 days in advance.
+- **Primary (Cloudflare Worker)**: Cron Triggers call the `workflow_dispatch` API with `scheduled=true` at **9:30 AM CT** and a backup at **9:45 AM CT**, Sunday through Thursday. Cron Triggers run in UTC, so each slot is listed for both the CDT and CST hours and the Worker drops whichever one isn't 9 AM in Chicago.
+- **Fallback (GitHub cron)**: 4:11 AM, 4:27 AM, 4:43 AM, 5:09 AM, and 5:25 AM CT, Sunday through Thursday, using `timezone: "America/Chicago"`.
+- **Guard rails**: `check-schedule` runs for both trigger types and skips a run if an earlier `Scheduled …` run for that Chicago day is already active or already succeeded. Manual runs neither trigger nor bypass the guard.
+
+Scheduled and Worker-dispatched runs always use the `prod` environment on `macos-latest`. The bot sleeps internally until `TARGET_LOCAL_TIME` before attempting the reservation 8 days in advance.
+
+### Deploying the Scheduler Worker
+
+1. Create a fine-grained GitHub personal access token scoped to this repository only, with **Actions: Read and write** permission.
+2. Deploy from `scheduler/`:
+
+   ```bash
+   cd scheduler
+   npm install
+   npx wrangler login
+   npx wrangler secret put GITHUB_DISPATCH_TOKEN   # paste the token
+   npx wrangler deploy
+   ```
+
+3. Check it with `npx wrangler tail` during a dispatch window, or look for `Scheduled (Cloudflare dispatch)` runs in the Actions tab. Run the Worker's tests with `npm test`.
+
+The token expires on the date you set when you created it. If dispatches start failing with `401`, rotate it with `wrangler secret put`.
 
 For GitHub Actions runs, inline notifications are disabled during the reservation job. The bot writes a final JSON result payload, uploads it as an artifact, and the separate `notify` job sends the final email/SMS notification.
 

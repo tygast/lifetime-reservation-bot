@@ -1,0 +1,20 @@
+name = "lifetime-reservation-scheduler"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+[vars]
+GITHUB_REPO = "tygast/lifetime-reservation-bot"
+GITHUB_WORKFLOW = "bot.yml"
+GITHUB_REF = "main"
+
+# Cron Triggers are UTC. Each slot is listed for both 14:xx UTC (9:xx CDT) and
+# 15:xx UTC (9:xx CST); the Worker drops whichever one is not 9 AM in Chicago.
+# 9:30 CT is the primary dispatch and 9:45 CT is a backup. The bot sleeps until
+# TARGET_LOCAL_TIME (10:00 CT) once its runner starts.
+[triggers]
+crons = [
+  "30 14 * * SUN-THU",
+  "30 15 * * SUN-THU",
+  "45 14 * * SUN-THU",
+  "45 15 * * SUN-THU",
+]
