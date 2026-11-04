@@ -39,10 +39,11 @@ on:
 jobs:
   check-schedule:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
     if: inputs.scheduled
     permissions:
-      actions: read
+      actions: write  # cancels an earlier run that never got a runner
+      contents: read
     outputs:
       should_run: ${{ steps.duplicate-check.outputs.should_run }}
     steps:
@@ -56,6 +57,11 @@ jobs:
           echo "======================"
           echo "current_local_date=$CURRENT_LOCAL_DATE" >> "$GITHUB_OUTPUT"
 
+      - name: Checkout guard script
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/scripts
+
       - name: Skip duplicate scheduled run for the active Chicago day
         id: duplicate-check
         uses: actions/github-script@v8
@@ -63,110 +69,26 @@ jobs:
           CURRENT_LOCAL_DATE: ${{ steps.schedule-timing.outputs.current_local_date }}
         with:
           script: |
-            const currentLocalDate = process.env.CURRENT_LOCAL_DATE;
-
-            const formatter = new Intl.DateTimeFormat("en-CA", {
-              timeZone: "America/Chicago",
-              year: "numeric",
-              month: "2-digit",
-              day: "2-digit",
+            const duplicateGuard = require("./.github/scripts/duplicate-guard.js");
+            const shouldRun = await duplicateGuard({
+              github,
+              context,
+              core,
+              currentLocalDate: process.env.CURRENT_LOCAL_DATE,
+              refName: process.env.GITHUB_REF_NAME,
             });
-
-            try {
-              const response = await github.rest.actions.listWorkflowRuns({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                workflow_id: "bot.yml",
-                per_page: 100,
-              });
-
-              const runs = Array.isArray(response.data.workflow_runs)
-                ? response.data.workflow_runs.filter(
-                    (run) =>
-                      run &&
-                      typeof run.id === "number" &&
-                      typeof run.run_number === "number" &&
-                      typeof run.created_at === "string" &&
-                      typeof run.display_title === "string" &&
-                      run.display_title.startsWith("Scheduled")
-                  )
-                : [];
-
-              // Only earlier runs on this branch count. If two runs reach this
-              // check at the same moment, the earlier one proceeds instead of
-              // both waiting on each other's run-bot job.
-              const candidates = runs
-                .filter((run) => run.run_number < context.runNumber)
-                .filter((run) => run.head_branch === process.env.GITHUB_REF_NAME)
-                .filter((run) => formatter.format(new Date(run.created_at)) === currentLocalDate)
-                .sort((left, right) => left.run_number - right.run_number);
-
-              // A run-bot job that is still queued or running has not decided
-              // anything yet, so wait for it rather than skip on its behalf.
-              // Jobs can sit queued without ever getting a runner and then be
-              // cancelled, which must not block this backup.
-              const POLL_MS = 30 * 1000;
-              const WAIT_DEADLINE = Date.now() + 45 * 60 * 1000;
-              const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-              const fetchRunBotJob = async (runId) => {
-                const jobsResponse = await github.rest.actions.listJobsForWorkflowRun({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  run_id: runId,
-                  per_page: 100,
-                });
-                const jobs = Array.isArray(jobsResponse.data.jobs)
-                  ? jobsResponse.data.jobs.filter(Boolean)
-                  : [];
-                return jobs.find((job) => job.name === "run-bot");
-              };
-
-              for (const run of candidates) {
-                let runBotJob = await fetchRunBotJob(run.id);
-                while (
-                  (!runBotJob || runBotJob.status !== "completed") &&
-                  Date.now() < WAIT_DEADLINE
-                ) {
-                  core.info(
-                    `Waiting on ${run.display_title} (#${run.id}): run-bot ` +
-                    `${runBotJob ? runBotJob.status : "not visible yet"}.`
-                  );
-                  await sleep(POLL_MS);
-                  runBotJob = await fetchRunBotJob(run.id);
-                }
-
-                if (!runBotJob || runBotJob.status === "queued") {
-                  core.warning(
-                    `${run.display_title} (#${run.id}) never started run-bot; ` +
-                    `continuing past it.`
-                  );
-                  continue;
-                }
-                if (runBotJob.status === "completed" && runBotJob.conclusion !== "success") {
-                  continue;
-                }
-                core.notice(
-                  `Skipping duplicate scheduled run because ${run.display_title} ` +
-                  `(#${run.id}) has run-bot ${runBotJob.status}` +
-                  `${runBotJob.conclusion ? `/${runBotJob.conclusion}` : ""} ` +
-                  `for ${currentLocalDate}.`
-                );
-                core.setOutput("should_run", "false");
-                return;
-              }
-            } catch (error) {
-              core.warning(
-                `Duplicate guard could not inspect existing workflow runs: ${error.message}`
-              );
-            }
-
-            core.setOutput("should_run", "true");
+            core.setOutput("should_run", String(shouldRun));
 
   run-bot:
     runs-on: ${{ inputs.scheduled && 'ubuntu-latest' || inputs.runner }}
     needs: check-schedule
     if: always() && (!inputs.scheduled || needs.check-schedule.outputs.should_run == 'true')
     environment: ${{ inputs.scheduled && 'prod' || inputs.env }}
+    # Scheduled runs start ~9:30 CT and sleep until 10:00 CT, so 50 minutes
+    # leaves room for booking retries while ending before the next scheduled
+    # run's duplicate-guard wait (60 minutes) runs out. Manual runs keep the
+    # GitHub default.
+    timeout-minutes: ${{ inputs.scheduled && 50 || 360 }}
     steps:
       - name: Deploying in selected environment
         run: echo "Deploying in ${{ inputs.scheduled && 'prod' || inputs.env }} on ${{ inputs.scheduled && 'ubuntu-latest' || inputs.runner }}"
