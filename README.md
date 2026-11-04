@@ -309,13 +309,12 @@ The bot can run automatically using GitHub Actions.
 
 ### Workflow Schedule
 
-GitHub Actions `schedule` triggers are best-effort and routinely start hours late (6–8 hours on some weekdays in late September 2026), so the primary trigger is an external Cloudflare Worker in `scheduler/`:
+GitHub Actions `schedule` triggers are best-effort and routinely start hours late (6–8 hours on some weekdays in late September 2026), so scheduled runs come only from an external Cloudflare Worker in `scheduler/`:
 
 - **Primary (Cloudflare Worker)**: Cron Triggers call the `workflow_dispatch` API with `scheduled=true` at **9:30 AM CT** and a backup at **9:45 AM CT**, Sunday through Thursday. Cron Triggers run in UTC, so each slot is listed for both the CDT and CST hours and the Worker drops whichever one isn't 9 AM in Chicago.
-- **Fallback (GitHub cron)**: 4:11 AM, 4:27 AM, 4:43 AM, 5:09 AM, and 5:25 AM CT, Sunday through Thursday, using `timezone: "America/Chicago"`.
-- **Guard rails**: `check-schedule` runs for both trigger types and skips a run if an earlier `Scheduled …` run for that Chicago day is already active or already succeeded. Manual runs neither trigger nor bypass the guard.
+- **Guard rails**: `check-schedule` runs for Worker-dispatched runs. If an earlier `Scheduled …` run for that Chicago day is still queued or running, it waits (up to 45 minutes) for that run's `run-bot` job to finish, then skips only if it succeeded. A run that never got a runner does not block the backup. Manual runs neither trigger nor bypass the guard.
 
-Scheduled and Worker-dispatched runs always use the `prod` environment on `macos-latest`. The bot sleeps internally until `TARGET_LOCAL_TIME` before attempting the reservation 8 days in advance.
+Scheduled and Worker-dispatched runs always use the `prod` environment on `ubuntu-latest` (macOS runners are capacity-constrained and can sit queued until cancelled). The bot sleeps internally until `TARGET_LOCAL_TIME` before attempting the reservation 8 days in advance.
 
 ### Deploying the Scheduler Worker
 
