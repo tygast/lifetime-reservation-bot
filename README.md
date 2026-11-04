@@ -309,30 +309,41 @@ The bot can run automatically using GitHub Actions.
 
 ### Workflow Schedule
 
-GitHub Actions `schedule` triggers are best-effort and routinely start hours late (6–8 hours on some weekdays in late September 2026), so the primary trigger is an external Cloudflare Worker in `scheduler/`:
+GitHub Actions `schedule` triggers are best-effort and routinely start hours late (6–8 hours on some weekdays in late September 2026), so scheduled runs come only from an external Cloudflare Worker in `scheduler/`:
 
 - **Primary (Cloudflare Worker)**: Cron Triggers call the `workflow_dispatch` API with `scheduled=true` at **9:30 AM CT** and a backup at **9:45 AM CT**, Sunday through Thursday. Cron Triggers run in UTC, so each slot is listed for both the CDT and CST hours and the Worker drops whichever one isn't 9 AM in Chicago.
-- **Fallback (GitHub cron)**: 4:11 AM, 4:27 AM, 4:43 AM, 5:09 AM, and 5:25 AM CT, Sunday through Thursday, using `timezone: "America/Chicago"`.
-- **Guard rails**: `check-schedule` runs for both trigger types and skips a run if an earlier `Scheduled …` run for that Chicago day is already active or already succeeded. Manual runs neither trigger nor bypass the guard.
+- **Guard rails**: `check-schedule` runs for Worker-dispatched runs and checks earlier `Scheduled …` runs for that Chicago day (logic in `.github/scripts/duplicate-guard.js`, tests via `node --test .github/scripts/duplicate-guard.test.js`):
+  - Earlier run booked successfully: skip.
+  - Earlier run failed or was cancelled: run.
+  - Earlier run still running: wait for it (up to 60 minutes; scheduled `run-bot` jobs time out at 50), then decide as above.
+  - Earlier run still waiting for a runner after a 2-minute grace period: cancel it and run, so it can't start later and book alongside this one.
+  - If the run list can't be read at all, run anyway; missing a class is worse than a duplicate attempt.
+  - Manual runs neither trigger nor bypass the guard.
 
-Scheduled and Worker-dispatched runs always use the `prod` environment on `macos-latest`. The bot sleeps internally until `TARGET_LOCAL_TIME` before attempting the reservation 8 days in advance.
+Scheduled and Worker-dispatched runs always use the `prod` environment on `ubuntu-latest` (macOS runners are capacity-constrained and can sit queued until cancelled). The bot sleeps internally until `TARGET_LOCAL_TIME` before attempting the reservation 8 days in advance.
 
 ### Deploying the Scheduler Worker
 
-1. Create a fine-grained GitHub personal access token scoped to this repository only, with **Actions: Read and write** permission.
-2. Deploy from `scheduler/`:
+1. Create a GitHub App (your avatar → **Settings** → **Developer settings** → **GitHub Apps** → **New GitHub App**):
+   - Uncheck **Webhook → Active**.
+   - Set the **Actions** repository permission to **Read and write**.
+   - Set "Where can this app be installed" to **Only on this account**.
+   - Generate a private key, then install the App on this repository only.
+   - Put the App ID in `GITHUB_APP_ID` in `scheduler/wrangler.toml`.
+2. Convert the key to PKCS#8 (the format Workers can import), store it, and deploy from `scheduler/`:
 
    ```bash
    cd scheduler
    npm install
    npx wrangler login
-   npx wrangler secret put GITHUB_DISPATCH_TOKEN   # paste the token
+   openssl pkcs8 -topk8 -nocrypt -in ~/Downloads/<app>.private-key.pem \
+     | npx wrangler secret put GITHUB_APP_PRIVATE_KEY
    npx wrangler deploy
    ```
 
 3. Check it with `npx wrangler tail` during a dispatch window, or look for `Scheduled (Cloudflare dispatch)` runs in the Actions tab. Run the Worker's tests with `npm test`.
 
-The token expires on the date you set when you created it. If dispatches start failing with `401`, rotate it with `wrangler secret put`.
+Runs are started by the App (shown as `<app-name>[bot]` in the Actions tab), not by a person. The Worker mints a fresh one-hour installation token for each dispatch, so there's no token to rotate. If dispatches fail with an `installation lookup failed: 404`, the App isn't installed on the repo.
 
 For GitHub Actions runs, inline notifications are disabled during the reservation job. The bot writes a final JSON result payload, uploads it as an artifact, and the separate `notify` job sends the final email/SMS notification.
 

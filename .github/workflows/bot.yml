@@ -1,35 +1,16 @@
 name: Life Time Reservation Bot
 run-name: >-
   ${{
-    github.event_name == 'schedule'
-    && (
-      github.event.schedule == '11 4 * * 0-4' && 'Scheduled (CT primary)'
-      || github.event.schedule == '27 4 * * 0-4' && 'Scheduled (CT backup 1)'
-      || github.event.schedule == '43 4 * * 0-4' && 'Scheduled (CT backup 2)'
-      || github.event.schedule == '9 5 * * 0-4' && 'Scheduled (CT backup 3)'
-      || github.event.schedule == '25 5 * * 0-4' && 'Scheduled (CT final backup)'
-      || format('Scheduled ({0})', github.event.schedule)
-    )
-    || inputs.scheduled && 'Scheduled (Cloudflare dispatch)'
+    inputs.scheduled && 'Scheduled (Cloudflare dispatch)'
     || github.event_name == 'workflow_dispatch'
     && format('Manual ({0}, {1})', inputs.env, inputs.runner)
     || github.event_name
   }}
 
 on:
-  schedule:
-    - cron: '11 4 * * 0-4'   # 4:11 AM CT primary - 4h49m buffer before 9 AM CT target
-      timezone: 'America/Chicago'
-    - cron: '27 4 * * 0-4'   # 4:27 AM CT backup 1 - 4h33m buffer before 9 AM CT target
-      timezone: 'America/Chicago'
-    - cron: '43 4 * * 0-4'   # 4:43 AM CT backup 2 - 4h17m buffer before 9 AM CT target
-      timezone: 'America/Chicago'
-    - cron: '9 5 * * 0-4'    # 5:09 AM CT backup 3 - 3h51m buffer before 9 AM CT target
-      timezone: 'America/Chicago'
-    - cron: '25 5 * * 0-4'   # 5:25 AM CT final backup - 3h35m buffer before 9 AM CT target
-      timezone: 'America/Chicago'
-  # GitHub cron is best-effort and often hours late; scheduler/ (Cloudflare
-  # Worker) dispatches with scheduled=true at 9:30/9:45 CT as the primary trigger.
+  # Scheduled runs come from the Cloudflare Worker in scheduler/, which
+  # dispatches with scheduled=true at 9:30/9:45 CT. GitHub `schedule` triggers
+  # were removed because they routinely started hours after the booking window.
   workflow_dispatch:  # Allows manual trigger
     inputs:
         env:
@@ -58,9 +39,11 @@ on:
 jobs:
   check-schedule:
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule' || inputs.scheduled
+    timeout-minutes: 75
+    if: inputs.scheduled
     permissions:
-      actions: read
+      actions: write  # cancels an earlier run that never got a runner
+      contents: read
     outputs:
       should_run: ${{ steps.duplicate-check.outputs.should_run }}
     steps:
@@ -68,13 +51,16 @@ jobs:
         id: schedule-timing
         run: |
           CURRENT_LOCAL_DATE=$(TZ='America/Chicago' date '+%Y-%m-%d')
-          CRON="${{ github.event.schedule }}"
           echo "=== Workflow Timing ==="
-          echo "Cron trigger:       $CRON"
           echo "Actual start (UTC): $(date -u '+%Y-%m-%d %H:%M:%S')"
           echo "Actual start (CT):  $(TZ='America/Chicago' date '+%Y-%m-%d %H:%M:%S %Z')"
           echo "======================"
           echo "current_local_date=$CURRENT_LOCAL_DATE" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout guard script
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/scripts
 
       - name: Skip duplicate scheduled run for the active Chicago day
         id: duplicate-check
@@ -83,94 +69,29 @@ jobs:
           CURRENT_LOCAL_DATE: ${{ steps.schedule-timing.outputs.current_local_date }}
         with:
           script: |
-            const currentLocalDate = process.env.CURRENT_LOCAL_DATE;
-
-            const formatter = new Intl.DateTimeFormat("en-CA", {
-              timeZone: "America/Chicago",
-              year: "numeric",
-              month: "2-digit",
-              day: "2-digit",
+            const duplicateGuard = require("./.github/scripts/duplicate-guard.js");
+            const shouldRun = await duplicateGuard({
+              github,
+              context,
+              core,
+              currentLocalDate: process.env.CURRENT_LOCAL_DATE,
+              refName: process.env.GITHUB_REF_NAME,
             });
-
-            try {
-              const response = await github.rest.actions.listWorkflowRuns({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                workflow_id: "bot.yml",
-                per_page: 100,
-              });
-
-              const runs = Array.isArray(response.data.workflow_runs)
-                ? response.data.workflow_runs.filter(
-                    (run) =>
-                      run &&
-                      typeof run.id === "number" &&
-                      typeof run.run_number === "number" &&
-                      typeof run.created_at === "string" &&
-                      typeof run.display_title === "string" &&
-                      run.display_title.startsWith("Scheduled")
-                  )
-                : [];
-
-              // Only earlier runs on this branch count. If two runs reach this
-              // check at the same moment, the earlier one proceeds instead of
-              // both waiting on each other's run-bot job.
-              const candidates = runs
-                .filter((run) => run.run_number < context.runNumber)
-                .filter((run) => run.head_branch === process.env.GITHUB_REF_NAME)
-                .filter((run) => formatter.format(new Date(run.created_at)) === currentLocalDate)
-                .sort((left, right) => left.run_number - right.run_number);
-
-              for (const run of candidates) {
-                const jobsResponse = await github.rest.actions.listJobsForWorkflowRun({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  run_id: run.id,
-                  per_page: 100,
-                });
-                const jobs = Array.isArray(jobsResponse.data.jobs)
-                  ? jobsResponse.data.jobs.filter(Boolean)
-                  : [];
-                const runBotJob = jobs.find((job) => job.name === "run-bot");
-                if (!runBotJob) {
-                  core.notice(
-                    `Skipping duplicate scheduled run because ${run.display_title} ` +
-                    `(#${run.id}) already exists for ${currentLocalDate}, but its ` +
-                    `run-bot job is not visible yet.`
-                  );
-                  core.setOutput("should_run", "false");
-                  return;
-                }
-                const isActive = runBotJob.status !== "completed";
-                const isSuccessful = runBotJob.conclusion === "success";
-                if (!isActive && !isSuccessful) {
-                  continue;
-                }
-                core.notice(
-                  `Skipping duplicate scheduled run because ${run.display_title} ` +
-                  `(#${run.id}) has run-bot ${runBotJob.status}` +
-                  `${runBotJob.conclusion ? `/${runBotJob.conclusion}` : ""} ` +
-                  `for ${currentLocalDate}.`
-                );
-                core.setOutput("should_run", "false");
-                return;
-              }
-            } catch (error) {
-              core.warning(
-                `Duplicate guard could not inspect existing workflow runs: ${error.message}`
-              );
-            }
-
-            core.setOutput("should_run", "true");
+            core.setOutput("should_run", String(shouldRun));
 
   run-bot:
-    runs-on: ${{ (github.event_name == 'schedule' || inputs.scheduled) && 'macos-latest' || inputs.runner }}
+    runs-on: ${{ inputs.scheduled && 'ubuntu-latest' || inputs.runner }}
     needs: check-schedule
-    if: always() && (!(github.event_name == 'schedule' || inputs.scheduled) || needs.check-schedule.outputs.should_run == 'true')
-    environment: ${{ (github.event_name == 'schedule' || inputs.scheduled) && 'prod' || inputs.env }}
+    if: always() && (!inputs.scheduled || needs.check-schedule.outputs.should_run == 'true')
+    environment: ${{ inputs.scheduled && 'prod' || inputs.env }}
+    # Scheduled runs start ~9:30 CT and sleep until 10:00 CT, so 50 minutes
+    # leaves room for booking retries while ending before the next scheduled
+    # run's duplicate-guard wait (60 minutes) runs out. Manual runs keep the
+    # GitHub default.
+    timeout-minutes: ${{ inputs.scheduled && 50 || 360 }}
     steps:
       - name: Deploying in selected environment
-        run: echo "Deploying in ${{ (github.event_name == 'schedule' || inputs.scheduled) && 'prod' || inputs.env }} on ${{ (github.event_name == 'schedule' || inputs.scheduled) && 'macos-latest' || inputs.runner }}"
+        run: echo "Deploying in ${{ inputs.scheduled && 'prod' || inputs.env }} on ${{ inputs.scheduled && 'ubuntu-latest' || inputs.runner }}"
 
       - name: Checkout Repository
         uses: actions/checkout@v5
@@ -240,8 +161,8 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     needs: [check-schedule, run-bot]
-    if: always() && needs.run-bot.result != 'skipped' && (!(github.event_name == 'schedule' || inputs.scheduled) || needs.check-schedule.outputs.should_run == 'true')
-    environment: ${{ (github.event_name == 'schedule' || inputs.scheduled) && 'prod' || inputs.env }}
+    if: always() && needs.run-bot.result != 'skipped' && (!inputs.scheduled || needs.check-schedule.outputs.should_run == 'true')
+    environment: ${{ inputs.scheduled && 'prod' || inputs.env }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v5
