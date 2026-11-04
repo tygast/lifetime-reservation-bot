@@ -8,6 +8,9 @@ workers_dev = false
 GITHUB_REPO = "tygast/lifetime-reservation-bot"
 GITHUB_WORKFLOW = "bot.yml"
 GITHUB_REF = "main"
+# GitHub App that dispatches the workflow. Its private key is the
+# GITHUB_APP_PRIVATE_KEY secret (PKCS#8 PEM).
+GITHUB_APP_ID = "5614705"
 
 # Cron Triggers are UTC. Each slot is listed for both 14:xx UTC (9:xx CDT) and
 # 15:xx UTC (9:xx CST); the Worker drops whichever one is not 9 AM in Chicago.

@@ -4,7 +4,10 @@
 // late, so this Worker calls the workflow_dispatch API from a Cron Trigger
 // instead. Cron Triggers run in UTC, so wrangler.toml fires in both the CDT and
 // CST hours and `shouldDispatch` keeps only the ones that land in DISPATCH_HOUR
-// Chicago time.
+// Chicago time. It authenticates as a GitHub App (see github-app.js), so runs
+// show the App as the actor rather than a person.
+
+import { getInstallationToken, githubHeaders } from "./github-app.js";
 
 const DISPATCH_TIMEZONE = "America/Chicago";
 const DISPATCH_HOUR = 9;
@@ -31,15 +34,10 @@ export async function dispatchWorkflow(env, fetchImpl = fetch) {
   const url =
     `https://api.github.com/repos/${env.GITHUB_REPO}` +
     `/actions/workflows/${env.GITHUB_WORKFLOW}/dispatches`;
+  const token = await getInstallationToken(env, fetchImpl);
   const response = await fetchImpl(url, {
     method: "POST",
-    headers: {
-      Accept: "application/vnd.github+json",
-      Authorization: `Bearer ${env.GITHUB_DISPATCH_TOKEN}`,
-      "Content-Type": "application/json",
-      "User-Agent": "lifetime-reservation-scheduler",
-      "X-GitHub-Api-Version": "2022-11-28",
-    },
+    headers: { ...githubHeaders(token), "Content-Type": "application/json" },
     body: JSON.stringify({
       ref: env.GITHUB_REF,
       inputs: { env: "prod", runner: "ubuntu-latest", scheduled: "true" },

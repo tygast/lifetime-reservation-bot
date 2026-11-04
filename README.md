@@ -318,20 +318,26 @@ Scheduled and Worker-dispatched runs always use the `prod` environment on `ubunt
 
 ### Deploying the Scheduler Worker
 
-1. Create a fine-grained GitHub personal access token scoped to this repository only, with **Actions: Read and write** permission.
-2. Deploy from `scheduler/`:
+1. Create a GitHub App (your avatar → **Settings** → **Developer settings** → **GitHub Apps** → **New GitHub App**):
+   - Uncheck **Webhook → Active**.
+   - Set the **Actions** repository permission to **Read and write**.
+   - Set "Where can this app be installed" to **Only on this account**.
+   - Generate a private key, then install the App on this repository only.
+   - Put the App ID in `GITHUB_APP_ID` in `scheduler/wrangler.toml`.
+2. Convert the key to PKCS#8 (the format Workers can import), store it, and deploy from `scheduler/`:
 
    ```bash
    cd scheduler
    npm install
    npx wrangler login
-   npx wrangler secret put GITHUB_DISPATCH_TOKEN   # paste the token
+   openssl pkcs8 -topk8 -nocrypt -in ~/Downloads/<app>.private-key.pem \
+     | npx wrangler secret put GITHUB_APP_PRIVATE_KEY
    npx wrangler deploy
    ```
 
 3. Check it with `npx wrangler tail` during a dispatch window, or look for `Scheduled (Cloudflare dispatch)` runs in the Actions tab. Run the Worker's tests with `npm test`.
 
-The token expires on the date you set when you created it. If dispatches start failing with `401`, rotate it with `wrangler secret put`.
+Runs are started by the App (shown as `<app-name>[bot]` in the Actions tab), not by a person. The Worker mints a fresh one-hour installation token for each dispatch, so there's no token to rotate. If dispatches fail with an `installation lookup failed: 404`, the App isn't installed on the repo.
 
 For GitHub Actions runs, inline notifications are disabled during the reservation job. The bot writes a final JSON result payload, uploads it as an artifact, and the separate `notify` job sends the final email/SMS notification.
 
