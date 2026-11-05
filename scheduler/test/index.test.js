@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { createAppJwt } from "../src/github-app.js";
-import worker, { dispatchWorkflow, shouldDispatch } from "../src/index.js";
+import worker, { dispatchSlot, dispatchWorkflow, shouldDispatch } from "../src/index.js";
 
 const keyPair = await crypto.subtle.generateKey(
   {
@@ -59,6 +59,13 @@ test("dispatches the CST slot and skips the CDT slot in winter", () => {
   assert.equal(shouldDispatch(new Date("2026-12-02T14:30:00Z")), false);
 });
 
+test("labels the 9:30 slot primary and the 9:45 slot backup in both CDT and CST", () => {
+  assert.equal(dispatchSlot(new Date("2026-09-30T14:30:00Z")), "primary");
+  assert.equal(dispatchSlot(new Date("2026-09-30T14:45:00Z")), "backup");
+  assert.equal(dispatchSlot(new Date("2026-12-02T15:30:00Z")), "primary");
+  assert.equal(dispatchSlot(new Date("2026-12-02T15:45:00Z")), "backup");
+});
+
 test("createAppJwt signs an RS256 JWT that verifies with the App key", async () => {
   const nowMs = Date.parse("2026-11-04T15:30:00Z");
   const jwt = await createAppJwt("12345", privateKeyPem, nowMs);
@@ -84,7 +91,7 @@ test("createAppJwt rejects GitHub's PKCS#1 key with a conversion hint", async ()
 test("dispatchWorkflow exchanges the App JWT for a scoped installation token", async () => {
   const { fetchImpl, requests } = fakeGitHub();
 
-  await dispatchWorkflow(env, fetchImpl);
+  await dispatchWorkflow(env, "primary", fetchImpl);
 
   const [lookup, exchange, dispatch] = requests;
   assert.match(lookup.init.headers.Authorization, /^Bearer [\w-]+\.[\w-]+\.[\w-]+$/);
@@ -102,7 +109,7 @@ test("dispatchWorkflow exchanges the App JWT for a scoped installation token", a
   assert.equal(dispatch.init.headers.Authorization, "Bearer installation-token");
   assert.deepEqual(JSON.parse(dispatch.init.body), {
     ref: "main",
-    inputs: { env: "prod", runner: "ubuntu-latest", scheduled: "true" },
+    inputs: { env: "prod", runner: "ubuntu-latest", scheduled: "true", slot: "primary" },
   });
 });
 
@@ -110,7 +117,7 @@ test("dispatchWorkflow throws when the App is not installed on the repo", async 
   const fetchImpl = async () => new Response("Not Found", { status: 404 });
 
   await assert.rejects(
-    dispatchWorkflow(env, fetchImpl),
+    dispatchWorkflow(env, "primary", fetchImpl),
     /installation lookup failed: 404 Not Found/,
   );
 });
@@ -118,7 +125,7 @@ test("dispatchWorkflow throws when the App is not installed on the repo", async 
 test("dispatchWorkflow throws on a non-2xx dispatch response", async () => {
   const { fetchImpl } = fakeGitHub(() => new Response("Bad credentials", { status: 401 }));
 
-  await assert.rejects(dispatchWorkflow(env, fetchImpl), /workflow_dispatch failed: 401 Bad credentials/);
+  await assert.rejects(dispatchWorkflow(env, "primary", fetchImpl), /workflow_dispatch failed: 401 Bad credentials/);
 });
 
 test("scheduled handler does not call GitHub outside the dispatch hour", async () => {

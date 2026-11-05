@@ -341,7 +341,7 @@ Scheduled and Worker-dispatched runs always use the `prod` environment on `ubunt
    npx wrangler deploy
    ```
 
-3. Check it with `npx wrangler tail` during a dispatch window, or look for `Scheduled (Cloudflare dispatch)` runs in the Actions tab. Run the Worker's tests with `npm test`.
+3. Check it with `npx wrangler tail` during a dispatch window, or look for `Scheduled (primary)` (9:30 CT) and `Scheduled (backup)` (9:45 CT) runs in the Actions tab. Run the Worker's tests with `npm test`.
 
 Runs are started by the App (shown as `<app-name>[bot]` in the Actions tab), not by a person. The Worker mints a fresh one-hour installation token for each dispatch, so there's no token to rotate. If dispatches fail with an `installation lookup failed: 404`, the App isn't installed on the repo.
 

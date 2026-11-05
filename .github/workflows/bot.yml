@@ -1,7 +1,7 @@
 name: Life Time Reservation Bot
 run-name: >-
   ${{
-    inputs.scheduled && 'Scheduled (Cloudflare dispatch)'
+    inputs.scheduled && format('Scheduled ({0})', inputs.slot || 'Cloudflare dispatch')
     || github.event_name == 'workflow_dispatch'
     && format('Manual ({0}, {1})', inputs.env, inputs.runner)
     || github.event_name
@@ -35,6 +35,11 @@ on:
           required: false
           default: false
           type: boolean
+        slot:
+          description: "Which scheduled slot dispatched this run (set by the Cloudflare scheduler Worker)"
+          required: false
+          default: ""
+          type: string
 
 jobs:
   check-schedule:
