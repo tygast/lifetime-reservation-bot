@@ -9,7 +9,7 @@ const PRIMARY = {
   id: 1,
   run_number: 9,
   created_at: "2026-11-04T15:30:15Z",
-  display_title: "Scheduled (Cloudflare dispatch)",
+  display_title: "Scheduled (primary)",
   head_branch: "main",
 };
 const job = (status, conclusion = null) => ({ name: "run-bot", status, conclusion });

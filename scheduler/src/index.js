@@ -30,7 +30,13 @@ export function shouldDispatch(date) {
   return chicagoTime(date).hour === DISPATCH_HOUR;
 }
 
-export async function dispatchWorkflow(env, fetchImpl = fetch) {
+// Labels the run so the Actions list shows which slot started it. The first
+// slot of the hour (9:30) is the primary; any later one (9:45) is the backup.
+export function dispatchSlot(date) {
+  return chicagoTime(date).minute < 45 ? "primary" : "backup";
+}
+
+export async function dispatchWorkflow(env, slot, fetchImpl = fetch) {
   const url =
     `https://api.github.com/repos/${env.GITHUB_REPO}` +
     `/actions/workflows/${env.GITHUB_WORKFLOW}/dispatches`;
@@ -40,7 +46,7 @@ export async function dispatchWorkflow(env, fetchImpl = fetch) {
     headers: { ...githubHeaders(token), "Content-Type": "application/json" },
     body: JSON.stringify({
       ref: env.GITHUB_REF,
-      inputs: { env: "prod", runner: "ubuntu-latest", scheduled: "true" },
+      inputs: { env: "prod", runner: "ubuntu-latest", scheduled: "true", slot },
     }),
   });
 
@@ -61,7 +67,10 @@ export default {
       return;
     }
 
-    await dispatchWorkflow(env);
-    console.log(`Cron ${controller.cron} fired at ${local} CT; dispatched ${env.GITHUB_WORKFLOW}.`);
+    const slot = dispatchSlot(firedAt);
+    await dispatchWorkflow(env, slot);
+    console.log(
+      `Cron ${controller.cron} fired at ${local} CT; dispatched ${env.GITHUB_WORKFLOW} (${slot}).`,
+    );
   },
 };
